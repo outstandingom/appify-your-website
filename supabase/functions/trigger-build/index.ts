@@ -6,6 +6,22 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+const dataUrlToBytes = (dataUrl: string) => {
+  const match = dataUrl.match(/^data:(.*?);base64,(.*)$/);
+  if (!match) {
+    throw new Error("Invalid icon data format");
+  }
+
+  const [, mimeType, base64Data] = match;
+  const binary = atob(base64Data);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+
+  return { mimeType, bytes };
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -37,17 +53,40 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Create build record
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
+
+    let uploadedIconUrl: string | null = null;
+
+    if (typeof icon_url === "string" && icon_url.startsWith("data:")) {
+      const { mimeType, bytes } = dataUrlToBytes(icon_url);
+      const ext = mimeType.includes("jpeg") ? "jpg" : mimeType.includes("svg") ? "svg" : "png";
+      const iconPath = `${crypto.randomUUID()}.${ext}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("apk-icons")
+        .upload(iconPath, bytes, {
+          contentType: mimeType,
+          upsert: false,
+        });
+
+      if (uploadError) {
+        throw new Error(`Icon upload failed: ${uploadError.message}`);
+      }
+
+      const { data: publicUrlData } = supabase.storage.from("apk-icons").getPublicUrl(iconPath);
+      uploadedIconUrl = publicUrlData.publicUrl;
+    } else if (typeof icon_url === "string" && icon_url.trim().length > 0) {
+      uploadedIconUrl = icon_url;
+    }
 
     const { data: build, error: dbError } = await supabase
       .from("apk_builds")
       .insert({
         website_url,
         app_name,
-        icon_url: icon_url || null,
+        icon_url: uploadedIconUrl,
         status: "pending",
       })
       .select()
@@ -57,35 +96,30 @@ Deno.serve(async (req) => {
 
     const callbackUrl = `${supabaseUrl}/functions/v1/build-callback`;
 
-    // Trigger GitHub Actions workflow
-    const ghResponse = await fetch(
-      `https://api.github.com/repos/${GITHUB_REPO}/dispatches`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${GITHUB_TOKEN}`,
-          Accept: "application/vnd.github.v3+json",
-          "Content-Type": "application/json",
+    const ghResponse = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/dispatches`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${GITHUB_TOKEN}`,
+        Accept: "application/vnd.github.v3+json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        event_type: "build-apk",
+        client_payload: {
+          build_id: build.id,
+          website_url,
+          app_name,
+          icon_url: uploadedIconUrl,
+          callback_url: callbackUrl,
         },
-        body: JSON.stringify({
-          event_type: "build-apk",
-          client_payload: {
-            build_id: build.id,
-            website_url,
-            app_name,
-            icon_url: icon_url || null,
-            callback_url: callbackUrl,
-          },
-        }),
-      }
-    );
+      }),
+    });
 
     if (!ghResponse.ok) {
       const errText = await ghResponse.text();
       throw new Error(`GitHub API error [${ghResponse.status}]: ${errText}`);
     }
 
-    // Update status to building
     await supabase
       .from("apk_builds")
       .update({ status: "building", updated_at: new Date().toISOString() })
