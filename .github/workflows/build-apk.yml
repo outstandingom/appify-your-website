@@ -1,0 +1,263 @@
+name: Build WebView APK
+
+on:
+  repository_dispatch:
+    types: [build-apk]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Create Android project
+        run: |
+          mkdir -p app/src/main/java/com/webtoapk/app
+          mkdir -p app/src/main/res/values
+          mkdir -p app/src/main/res/layout
+          mkdir -p app/src/main/res/mipmap-hdpi
+          mkdir -p app/src/main/res/mipmap-mdpi
+          mkdir -p app/src/main/res/mipmap-xhdpi
+          mkdir -p app/src/main/res/mipmap-xxhdpi
+          mkdir -p app/src/main/res/mipmap-xxxhdpi
+
+          APP_NAME="${{ github.event.client_payload.app_name }}"
+          WEBSITE_URL="${{ github.event.client_payload.website_url }}"
+          BUILD_ID="${{ github.event.client_payload.build_id }}"
+          ICON_URL="${{ github.event.client_payload.icon_url }}"
+          PACKAGE_NAME="com.webtoapk.$(echo "$APP_NAME" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9' | head -c 30)"
+
+          # Download icon if provided
+          if [ -n "$ICON_URL" ] && [ "$ICON_URL" != "null" ]; then
+            curl -sL "$ICON_URL" -o /tmp/icon_original.png
+            # Resize for different densities using ImageMagick
+            for size_dir in "48:mipmap-mdpi" "72:mipmap-hdpi" "96:mipmap-xhdpi" "144:mipmap-xxhdpi" "192:mipmap-xxxhdpi"; do
+              SIZE="${size_dir%%:*}"
+              DIR="${size_dir##*:}"
+              convert /tmp/icon_original.png -resize ${SIZE}x${SIZE} "app/src/main/res/${DIR}/ic_launcher.png"
+            done
+          else
+            # Generate a simple default icon
+            for size_dir in "48:mipmap-mdpi" "72:mipmap-hdpi" "96:mipmap-xhdpi" "144:mipmap-xxhdpi" "192:mipmap-xxxhdpi"; do
+              SIZE="${size_dir%%:*}"
+              DIR="${size_dir##*:}"
+              convert -size ${SIZE}x${SIZE} xc:'#10B981' -fill white -gravity center -pointsize $((SIZE/3)) -annotate 0 'W' "app/src/main/res/${DIR}/ic_launcher.png"
+            done
+          fi
+
+          # settings.gradle
+          cat > settings.gradle << 'SETTINGS'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "WebToAPK"
+          include ':app'
+          SETTINGS
+
+          # Root build.gradle
+          cat > build.gradle << 'ROOT_BUILD'
+          plugins {
+              id 'com.android.application' version '8.2.0' apply false
+          }
+          ROOT_BUILD
+
+          # gradle.properties
+          cat > gradle.properties << 'PROPS'
+          android.useAndroidX=true
+          org.gradle.jvmargs=-Xmx2048m
+          PROPS
+
+          # App build.gradle
+          cat > app/build.gradle << APPBUILD
+          plugins {
+              id 'com.android.application'
+          }
+
+          android {
+              namespace '${PACKAGE_NAME}'
+              compileSdk 34
+
+              defaultConfig {
+                  applicationId "${PACKAGE_NAME}"
+                  minSdk 24
+                  targetSdk 34
+                  versionCode 1
+                  versionName "1.0"
+              }
+
+              buildTypes {
+                  release {
+                      minifyEnabled false
+                  }
+              }
+
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_17
+                  targetCompatibility JavaVersion.VERSION_17
+              }
+          }
+
+          dependencies {
+              implementation 'androidx.appcompat:appcompat:1.6.1'
+              implementation 'androidx.webkit:webkit:1.8.0'
+              implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.1.0'
+          }
+          APPBUILD
+
+          # AndroidManifest.xml
+          cat > app/src/main/AndroidManifest.xml << MANIFEST
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.INTERNET" />
+              <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+              <application
+                  android:allowBackup="true"
+                  android:icon="@mipmap/ic_launcher"
+                  android:label="${APP_NAME}"
+                  android:usesCleartextTraffic="true"
+                  android:theme="@style/AppTheme">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:configChanges="orientation|screenSize">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          MANIFEST
+
+          # MainActivity.java
+          cat > app/src/main/java/com/webtoapk/app/MainActivity.java << MAIN
+          package ${PACKAGE_NAME};
+
+          import android.os.Bundle;
+          import android.webkit.WebView;
+          import android.webkit.WebViewClient;
+          import android.webkit.WebChromeClient;
+          import android.webkit.WebSettings;
+          import android.view.KeyEvent;
+          import androidx.appcompat.app.AppCompatActivity;
+          import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
+
+          public class MainActivity extends AppCompatActivity {
+              private WebView webView;
+              private SwipeRefreshLayout swipeRefresh;
+
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  setContentView(R.layout.activity_main);
+
+                  webView = findViewById(R.id.webview);
+                  swipeRefresh = findViewById(R.id.swipe_refresh);
+
+                  WebSettings settings = webView.getSettings();
+                  settings.setJavaScriptEnabled(true);
+                  settings.setDomStorageEnabled(true);
+                  settings.setLoadWithOverviewMode(true);
+                  settings.setUseWideViewPort(true);
+                  settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+                  settings.setAllowFileAccess(true);
+                  settings.setMediaPlaybackRequiresUserGesture(false);
+
+                  webView.setWebViewClient(new WebViewClient());
+                  webView.setWebChromeClient(new WebChromeClient());
+
+                  swipeRefresh.setOnRefreshListener(() -> {
+                      webView.reload();
+                      swipeRefresh.setRefreshing(false);
+                  });
+
+                  webView.loadUrl("${WEBSITE_URL}");
+              }
+
+              @Override
+              public boolean onKeyDown(int keyCode, KeyEvent event) {
+                  if (keyCode == KeyEvent.KEYCODE_BACK && webView.canGoBack()) {
+                      webView.goBack();
+                      return true;
+                  }
+                  return super.onKeyDown(keyCode, event);
+              }
+          }
+          MAIN
+
+          # Move Java file to correct package directory
+          mkdir -p "app/src/main/java/$(echo $PACKAGE_NAME | tr '.' '/')"
+          mv app/src/main/java/com/webtoapk/app/MainActivity.java "app/src/main/java/$(echo $PACKAGE_NAME | tr '.' '/')/"
+
+          # Layout XML
+          cat > app/src/main/res/layout/activity_main.xml << 'LAYOUT'
+          <?xml version="1.0" encoding="utf-8"?>
+          <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+              xmlns:android="http://schemas.android.com/apk/res/android"
+              android:id="@+id/swipe_refresh"
+              android:layout_width="match_parent"
+              android:layout_height="match_parent">
+              <WebView
+                  android:id="@+id/webview"
+                  android:layout_width="match_parent"
+                  android:layout_height="match_parent" />
+          </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+          LAYOUT
+
+          # Theme
+          cat > app/src/main/res/values/styles.xml << 'STYLES'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <style name="AppTheme" parent="Theme.AppCompat.NoActionBar">
+                  <item name="android:windowFullscreen">false</item>
+                  <item name="android:statusBarColor">@android:color/black</item>
+              </style>
+          </resources>
+          STYLES
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Build Debug APK
+        run: |
+          # Create gradle wrapper
+          gradle wrapper --gradle-version 8.4
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: "apk-${{ github.event.client_payload.build_id }}"
+          path: app/build/outputs/apk/debug/*.apk
+          retention-days: 7
+
+      - name: Notify completion
+        if: always()
+        run: |
+          BUILD_ID="${{ github.event.client_payload.build_id }}"
+          CALLBACK_URL="${{ github.event.client_payload.callback_url }}"
+          STATUS="${{ job.status }}"
+          RUN_ID="${{ github.run_id }}"
+
+          if [ -n "$CALLBACK_URL" ]; then
+            curl -s -X POST "$CALLBACK_URL" \
+              -H "Content-Type: application/json" \
+              -d "{\"build_id\": \"$BUILD_ID\", \"status\": \"$STATUS\", \"run_id\": \"$RUN_ID\"}"
+          fi

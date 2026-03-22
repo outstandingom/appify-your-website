@@ -1,10 +1,11 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Globe, Upload, Smartphone, Loader2, Download, CheckCircle2 } from "lucide-react";
+import { Globe, Upload, Smartphone, Loader2, Download, CheckCircle2, AlertCircle } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
-type Step = "input" | "generating" | "done";
+type Step = "input" | "generating" | "done" | "error";
 
 const ConverterForm = () => {
   const [url, setUrl] = useState("");
@@ -12,7 +13,10 @@ const ConverterForm = () => {
   const [logo, setLogo] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [step, setStep] = useState<Step>("input");
+  const [buildId, setBuildId] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -26,11 +30,68 @@ const ConverterForm = () => {
 
   const isValid = url.trim().length > 0 && appName.trim().length > 0;
 
-  const handleGenerate = () => {
+  // Poll build status
+  useEffect(() => {
+    if (step === "generating" && buildId) {
+      pollRef.current = setInterval(async () => {
+        const { data } = await (supabase as any)
+          .from("apk_builds")
+          .select("status, error_message")
+          .eq("id", buildId)
+          .single();
+
+        const build = data as { status: string; error_message: string | null } | null;
+        if (build?.status === "completed") {
+          setStep("done");
+          if (pollRef.current) clearInterval(pollRef.current);
+        } else if (build?.status === "failed") {
+          setStep("error");
+          setErrorMsg(build.error_message || "Build failed");
+          if (pollRef.current) clearInterval(pollRef.current);
+        }
+      }, 5000);
+
+      return () => {
+        if (pollRef.current) clearInterval(pollRef.current);
+      };
+    }
+  }, [step, buildId]);
+
+  const handleGenerate = async () => {
     if (!isValid) return;
     setStep("generating");
-    // Simulate APK generation
-    setTimeout(() => setStep("done"), 3500);
+    setErrorMsg("");
+
+    try {
+      // Ensure URL has protocol
+      let websiteUrl = url.trim();
+      if (!websiteUrl.startsWith("http")) {
+        websiteUrl = "https://" + websiteUrl;
+      }
+
+      const { data, error } = await supabase.functions.invoke("trigger-build", {
+        body: {
+          website_url: websiteUrl,
+          app_name: appName.trim(),
+          icon_url: logoPreview || null,
+        },
+      });
+
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
+
+      setBuildId(data.build_id);
+    } catch (err: any) {
+      setStep("error");
+      setErrorMsg(err.message || "Failed to start build");
+    }
+  };
+
+  const handleDownload = async () => {
+    if (!buildId) return;
+    const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+    const url = `https://${projectId}.supabase.co/functions/v1/download-apk?build_id=${buildId}`;
+    window.open(url, "_blank");
   };
 
   const handleReset = () => {
@@ -39,6 +100,8 @@ const ConverterForm = () => {
     setAppName("");
     setLogo(null);
     setLogoPreview(null);
+    setBuildId(null);
+    setErrorMsg("");
   };
 
   return (
@@ -142,6 +205,9 @@ const ConverterForm = () => {
                 <p className="text-sm text-muted-foreground">
                   Wrapping <span className="text-foreground font-medium">{appName}</span> for Android
                 </p>
+                <p className="text-xs text-muted-foreground mt-2">
+                  This may take 2-5 minutes. Don't close this page.
+                </p>
               </div>
             </div>
           )}
@@ -158,7 +224,7 @@ const ConverterForm = () => {
                 </p>
               </div>
               <div className="flex flex-col w-full gap-3">
-                <Button variant="hero" size="lg" className="w-full h-13 rounded-xl gap-2">
+                <Button variant="hero" size="lg" className="w-full h-13 rounded-xl gap-2" onClick={handleDownload}>
                   <Download className="w-5 h-5" />
                   Download APK
                 </Button>
@@ -166,6 +232,21 @@ const ConverterForm = () => {
                   Convert another website
                 </Button>
               </div>
+            </div>
+          )}
+
+          {step === "error" && (
+            <div className="flex flex-col items-center justify-center py-8 space-y-6 animate-fade-up" style={{ opacity: 0 }}>
+              <div className="w-20 h-20 rounded-2xl bg-destructive/10 flex items-center justify-center">
+                <AlertCircle className="w-10 h-10 text-destructive" />
+              </div>
+              <div className="text-center space-y-2">
+                <p className="font-display text-lg font-semibold text-foreground">Build failed</p>
+                <p className="text-sm text-muted-foreground">{errorMsg}</p>
+              </div>
+              <Button variant="ghost" onClick={handleReset} className="text-muted-foreground">
+                Try again
+              </Button>
             </div>
           )}
         </div>
