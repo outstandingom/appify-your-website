@@ -35,17 +35,18 @@ const ConverterForm = () => {
     if (step === "generating" && buildId) {
       pollRef.current = setInterval(async () => {
         const { data } = await supabase
-          .from("apk_builds")
+          .from("apk_builds" as any)
           .select("status, error_message")
           .eq("id", buildId)
           .single();
 
-        if (data?.status === "completed") {
+        const build = data as { status: string; error_message: string | null } | null;
+        if (build?.status === "completed") {
           setStep("done");
           if (pollRef.current) clearInterval(pollRef.current);
-        } else if (data?.status === "failed") {
+        } else if (build?.status === "failed") {
           setStep("error");
-          setErrorMsg(data.error_message || "Build failed");
+          setErrorMsg(build.error_message || "Build failed");
           if (pollRef.current) clearInterval(pollRef.current);
         }
       }, 5000);
