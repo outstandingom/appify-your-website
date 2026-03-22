@@ -14,7 +14,45 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      apk_builds: {
+        Row: {
+          app_name: string
+          artifact_url: string | null
+          created_at: string
+          error_message: string | null
+          github_run_id: string | null
+          icon_url: string | null
+          id: string
+          status: Database["public"]["Enums"]["build_status"]
+          updated_at: string
+          website_url: string
+        }
+        Insert: {
+          app_name: string
+          artifact_url?: string | null
+          created_at?: string
+          error_message?: string | null
+          github_run_id?: string | null
+          icon_url?: string | null
+          id?: string
+          status?: Database["public"]["Enums"]["build_status"]
+          updated_at?: string
+          website_url: string
+        }
+        Update: {
+          app_name?: string
+          artifact_url?: string | null
+          created_at?: string
+          error_message?: string | null
+          github_run_id?: string | null
+          icon_url?: string | null
+          id?: string
+          status?: Database["public"]["Enums"]["build_status"]
+          updated_at?: string
+          website_url?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -23,7 +61,7 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      build_status: "pending" | "building" | "completed" | "failed"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +188,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      build_status: ["pending", "building", "completed", "failed"],
+    },
   },
 } as const
