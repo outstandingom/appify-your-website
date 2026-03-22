@@ -34,8 +34,8 @@ const ConverterForm = () => {
   useEffect(() => {
     if (step === "generating" && buildId) {
       pollRef.current = setInterval(async () => {
-        const { data } = await supabase
-          .from("apk_builds" as any)
+        const { data } = await (supabase as any)
+          .from("apk_builds")
           .select("status, error_message")
           .eq("id", buildId)
           .single();
