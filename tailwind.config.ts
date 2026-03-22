@@ -84,6 +84,12 @@ export default {
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        "fade-up": "fade-up 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards",
+        "fade-up-delay-1": "fade-up 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.1s forwards",
+        "fade-up-delay-2": "fade-up 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.2s forwards",
+        "fade-up-delay-3": "fade-up 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.3s forwards",
+        "pulse-glow": "pulse-glow 3s ease-in-out infinite",
+        "spin-slow": "spin-slow 8s linear infinite",
       },
     },
   },
