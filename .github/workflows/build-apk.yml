@@ -420,7 +420,8 @@ jobs:
 
       - name: Build APK or AAB
         run: |
-          BUILD_AAB="${{ github.event.client_payload.build_aab }}"
+          CONFIG='${{ github.event.client_payload.config }}'
+          BUILD_AAB=$(echo "$CONFIG" | jq -r '.build_aab // false')
           gradle wrapper --gradle-version 8.4
           chmod +x gradlew
           if [ "$BUILD_AAB" = "true" ]; then
@@ -429,20 +430,13 @@ jobs:
             ./gradlew assembleDebug
           fi
 
-      - name: Upload APK artifact
-        if: ${{ github.event.client_payload.build_aab != 'true' }}
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: "apk-${{ github.event.client_payload.build_id }}"
-          path: app/build/outputs/apk/debug/*.apk
-          retention-days: 7
-
-      - name: Upload AAB artifact
-        if: ${{ github.event.client_payload.build_aab == 'true' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: "apk-${{ github.event.client_payload.build_id }}"
-          path: app/build/outputs/bundle/release/*.aab
+          path: |
+            app/build/outputs/apk/debug/*.apk
+            app/build/outputs/bundle/release/*.aab
           retention-days: 7
 
       - name: Notify completion
