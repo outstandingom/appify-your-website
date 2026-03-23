@@ -1,0 +1,15 @@
+ALTER TABLE public.apk_builds
+  ADD COLUMN IF NOT EXISTS package_name text,
+  ADD COLUMN IF NOT EXISTS splash_color text DEFAULT '#FFFFFF',
+  ADD COLUMN IF NOT EXISTS status_bar_color text DEFAULT '#000000',
+  ADD COLUMN IF NOT EXISTS enable_push boolean DEFAULT false,
+  ADD COLUMN IF NOT EXISTS enable_offline boolean DEFAULT false,
+  ADD COLUMN IF NOT EXISTS offline_message text DEFAULT 'You are offline. Please check your connection.',
+  ADD COLUMN IF NOT EXISTS enable_analytics boolean DEFAULT false,
+  ADD COLUMN IF NOT EXISTS enable_cookies boolean DEFAULT true,
+  ADD COLUMN IF NOT EXISTS enable_admob boolean DEFAULT false,
+  ADD COLUMN IF NOT EXISTS admob_banner_id text,
+  ADD COLUMN IF NOT EXISTS admob_interstitial_id text,
+  ADD COLUMN IF NOT EXISTS build_aab boolean DEFAULT false,
+  ADD COLUMN IF NOT EXISTS firebase_server_key text,
+  ADD COLUMN IF NOT EXISTS tier text DEFAULT 'free';

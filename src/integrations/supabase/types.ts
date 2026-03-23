@@ -16,38 +16,80 @@ export type Database = {
     Tables: {
       apk_builds: {
         Row: {
+          admob_banner_id: string | null
+          admob_interstitial_id: string | null
           app_name: string
           artifact_url: string | null
+          build_aab: boolean | null
           created_at: string
+          enable_admob: boolean | null
+          enable_analytics: boolean | null
+          enable_cookies: boolean | null
+          enable_offline: boolean | null
+          enable_push: boolean | null
           error_message: string | null
+          firebase_server_key: string | null
           github_run_id: string | null
           icon_url: string | null
           id: string
+          offline_message: string | null
+          package_name: string | null
+          splash_color: string | null
           status: Database["public"]["Enums"]["build_status"]
+          status_bar_color: string | null
+          tier: string | null
           updated_at: string
           website_url: string
         }
         Insert: {
+          admob_banner_id?: string | null
+          admob_interstitial_id?: string | null
           app_name: string
           artifact_url?: string | null
+          build_aab?: boolean | null
           created_at?: string
+          enable_admob?: boolean | null
+          enable_analytics?: boolean | null
+          enable_cookies?: boolean | null
+          enable_offline?: boolean | null
+          enable_push?: boolean | null
           error_message?: string | null
+          firebase_server_key?: string | null
           github_run_id?: string | null
           icon_url?: string | null
           id?: string
+          offline_message?: string | null
+          package_name?: string | null
+          splash_color?: string | null
           status?: Database["public"]["Enums"]["build_status"]
+          status_bar_color?: string | null
+          tier?: string | null
           updated_at?: string
           website_url: string
         }
         Update: {
+          admob_banner_id?: string | null
+          admob_interstitial_id?: string | null
           app_name?: string
           artifact_url?: string | null
+          build_aab?: boolean | null
           created_at?: string
+          enable_admob?: boolean | null
+          enable_analytics?: boolean | null
+          enable_cookies?: boolean | null
+          enable_offline?: boolean | null
+          enable_push?: boolean | null
           error_message?: string | null
+          firebase_server_key?: string | null
           github_run_id?: string | null
           icon_url?: string | null
           id?: string
+          offline_message?: string | null
+          package_name?: string | null
+          splash_color?: string | null
           status?: Database["public"]["Enums"]["build_status"]
+          status_bar_color?: string | null
+          tier?: string | null
           updated_at?: string
           website_url?: string
         }

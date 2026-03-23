@@ -8,17 +8,11 @@ const corsHeaders = {
 
 const dataUrlToBytes = (dataUrl: string) => {
   const match = dataUrl.match(/^data:(.*?);base64,(.*)$/);
-  if (!match) {
-    throw new Error("Invalid icon data format");
-  }
-
+  if (!match) throw new Error("Invalid icon data format");
   const [, mimeType, base64Data] = match;
   const binary = atob(base64Data);
   const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return { mimeType, bytes };
 };
 
@@ -28,7 +22,15 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { website_url, app_name, icon_url } = await req.json();
+    const body = await req.json();
+    const {
+      website_url, app_name, icon_url,
+      package_name, splash_color, status_bar_color,
+      enable_push, enable_offline, offline_message,
+      enable_analytics, enable_cookies,
+      enable_admob, admob_banner_id, admob_interstitial_id,
+      build_aab, tier,
+    } = body;
 
     if (!website_url || !app_name) {
       return new Response(
@@ -48,7 +50,7 @@ Deno.serve(async (req) => {
     const GITHUB_REPO = Deno.env.get("GITHUB_REPO");
     if (!GITHUB_REPO) {
       return new Response(
-        JSON.stringify({ error: "GITHUB_REPO is not configured (format: owner/repo)" }),
+        JSON.stringify({ error: "GITHUB_REPO not configured" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -57,36 +59,42 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    // Upload icon if base64
     let uploadedIconUrl: string | null = null;
-
     if (typeof icon_url === "string" && icon_url.startsWith("data:")) {
       const { mimeType, bytes } = dataUrlToBytes(icon_url);
       const ext = mimeType.includes("jpeg") ? "jpg" : mimeType.includes("svg") ? "svg" : "png";
       const iconPath = `${crypto.randomUUID()}.${ext}`;
-
       const { error: uploadError } = await supabase.storage
         .from("apk-icons")
-        .upload(iconPath, bytes, {
-          contentType: mimeType,
-          upsert: false,
-        });
-
-      if (uploadError) {
-        throw new Error(`Icon upload failed: ${uploadError.message}`);
-      }
-
+        .upload(iconPath, bytes, { contentType: mimeType, upsert: false });
+      if (uploadError) throw new Error(`Icon upload failed: ${uploadError.message}`);
       const { data: publicUrlData } = supabase.storage.from("apk-icons").getPublicUrl(iconPath);
       uploadedIconUrl = publicUrlData.publicUrl;
     } else if (typeof icon_url === "string" && icon_url.trim().length > 0) {
       uploadedIconUrl = icon_url;
     }
 
+    // Insert build record
     const { data: build, error: dbError } = await supabase
       .from("apk_builds")
       .insert({
         website_url,
         app_name,
         icon_url: uploadedIconUrl,
+        package_name: package_name || null,
+        splash_color: splash_color || "#10B981",
+        status_bar_color: status_bar_color || "#000000",
+        enable_push: enable_push || false,
+        enable_offline: enable_offline || false,
+        offline_message: offline_message || "You are offline.",
+        enable_analytics: enable_analytics || false,
+        enable_cookies: enable_cookies !== false,
+        enable_admob: enable_admob || false,
+        admob_banner_id: admob_banner_id || null,
+        admob_interstitial_id: admob_interstitial_id || null,
+        build_aab: build_aab || false,
+        tier: tier || "free",
         status: "pending",
       })
       .select()
@@ -110,6 +118,18 @@ Deno.serve(async (req) => {
           website_url,
           app_name,
           icon_url: uploadedIconUrl,
+          package_name: package_name || null,
+          splash_color: splash_color || "#10B981",
+          status_bar_color: status_bar_color || "#000000",
+          enable_push: enable_push || false,
+          enable_offline: enable_offline || false,
+          offline_message: offline_message || "You are offline.",
+          enable_analytics: enable_analytics || false,
+          enable_cookies: enable_cookies !== false,
+          enable_admob: enable_admob || false,
+          admob_banner_id: admob_banner_id || null,
+          admob_interstitial_id: admob_interstitial_id || null,
+          build_aab: build_aab || false,
           callback_url: callbackUrl,
         },
       }),
