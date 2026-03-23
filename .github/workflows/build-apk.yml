@@ -14,28 +14,30 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Install ImageMagick
-        run: sudo apt-get update && sudo apt-get install -y imagemagick
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y imagemagick jq
 
-      - name: Create Android project
+      - name: Parse config and create Android project
         run: |
-          # Extract payload
-          APP_NAME="${{ github.event.client_payload.app_name }}"
-          WEBSITE_URL="${{ github.event.client_payload.website_url }}"
+          # Parse the JSON config string
           BUILD_ID="${{ github.event.client_payload.build_id }}"
-          ICON_URL="${{ github.event.client_payload.icon_url }}"
-          CUSTOM_PKG="${{ github.event.client_payload.package_name }}"
-          SPLASH_COLOR="${{ github.event.client_payload.splash_color }}"
-          STATUS_BAR_COLOR="${{ github.event.client_payload.status_bar_color }}"
-          ENABLE_PUSH="${{ github.event.client_payload.enable_push }}"
-          ENABLE_OFFLINE="${{ github.event.client_payload.enable_offline }}"
-          OFFLINE_MSG="${{ github.event.client_payload.offline_message }}"
-          ENABLE_ANALYTICS="${{ github.event.client_payload.enable_analytics }}"
-          ENABLE_COOKIES="${{ github.event.client_payload.enable_cookies }}"
-          ENABLE_ADMOB="${{ github.event.client_payload.enable_admob }}"
-          ADMOB_BANNER="${{ github.event.client_payload.admob_banner_id }}"
-          ADMOB_INTERSTITIAL="${{ github.event.client_payload.admob_interstitial_id }}"
-          BUILD_AAB="${{ github.event.client_payload.build_aab }}"
+          CONFIG='${{ github.event.client_payload.config }}'
+
+          APP_NAME=$(echo "$CONFIG" | jq -r '.app_name')
+          WEBSITE_URL=$(echo "$CONFIG" | jq -r '.website_url')
+          ICON_URL=$(echo "$CONFIG" | jq -r '.icon_url // empty')
+          CUSTOM_PKG=$(echo "$CONFIG" | jq -r '.package_name // empty')
+          SPLASH_COLOR=$(echo "$CONFIG" | jq -r '.splash_color // "#10B981"')
+          STATUS_BAR_COLOR=$(echo "$CONFIG" | jq -r '.status_bar_color // "#000000"')
+          ENABLE_PUSH=$(echo "$CONFIG" | jq -r '.enable_push // false')
+          ENABLE_OFFLINE=$(echo "$CONFIG" | jq -r '.enable_offline // false')
+          OFFLINE_MSG=$(echo "$CONFIG" | jq -r '.offline_message // "You are offline."')
+          ENABLE_ANALYTICS=$(echo "$CONFIG" | jq -r '.enable_analytics // false')
+          ENABLE_COOKIES=$(echo "$CONFIG" | jq -r '.enable_cookies // true')
+          ENABLE_ADMOB=$(echo "$CONFIG" | jq -r '.enable_admob // false')
+          ADMOB_BANNER=$(echo "$CONFIG" | jq -r '.admob_banner_id // empty')
+          ADMOB_INTERSTITIAL=$(echo "$CONFIG" | jq -r '.admob_interstitial_id // empty')
+          BUILD_AAB=$(echo "$CONFIG" | jq -r '.build_aab // false')
 
           # Package name
           if [ -n "$CUSTOM_PKG" ] && [ "$CUSTOM_PKG" != "null" ]; then
