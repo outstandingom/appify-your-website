@@ -104,6 +104,8 @@ Deno.serve(async (req) => {
 
     const callbackUrl = `${supabaseUrl}/functions/v1/build-callback`;
 
+    // GitHub client_payload allows max 10 top-level properties.
+    // Bundle all config into a single "config" object.
     const ghResponse = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/dispatches`, {
       method: "POST",
       headers: {
@@ -115,22 +117,24 @@ Deno.serve(async (req) => {
         event_type: "build-apk",
         client_payload: {
           build_id: build.id,
-          website_url,
-          app_name,
-          icon_url: uploadedIconUrl,
-          package_name: package_name || null,
-          splash_color: splash_color || "#10B981",
-          status_bar_color: status_bar_color || "#000000",
-          enable_push: enable_push || false,
-          enable_offline: enable_offline || false,
-          offline_message: offline_message || "You are offline.",
-          enable_analytics: enable_analytics || false,
-          enable_cookies: enable_cookies !== false,
-          enable_admob: enable_admob || false,
-          admob_banner_id: admob_banner_id || null,
-          admob_interstitial_id: admob_interstitial_id || null,
-          build_aab: build_aab || false,
           callback_url: callbackUrl,
+          config: JSON.stringify({
+            website_url,
+            app_name,
+            icon_url: uploadedIconUrl,
+            package_name: package_name || null,
+            splash_color: splash_color || "#10B981",
+            status_bar_color: status_bar_color || "#000000",
+            enable_push: enable_push || false,
+            enable_offline: enable_offline || false,
+            offline_message: offline_message || "You are offline.",
+            enable_analytics: enable_analytics || false,
+            enable_cookies: enable_cookies !== false,
+            enable_admob: enable_admob || false,
+            admob_banner_id: admob_banner_id || null,
+            admob_interstitial_id: admob_interstitial_id || null,
+            build_aab: build_aab || false,
+          }),
         },
       }),
     });
