@@ -19,38 +19,67 @@ jobs:
 
       - name: Create Android project
         run: |
-          mkdir -p app/src/main/java/com/webtoapk/app
+          # Extract payload
+          APP_NAME="${{ github.event.client_payload.app_name }}"
+          WEBSITE_URL="${{ github.event.client_payload.website_url }}"
+          BUILD_ID="${{ github.event.client_payload.build_id }}"
+          ICON_URL="${{ github.event.client_payload.icon_url }}"
+          CUSTOM_PKG="${{ github.event.client_payload.package_name }}"
+          SPLASH_COLOR="${{ github.event.client_payload.splash_color }}"
+          STATUS_BAR_COLOR="${{ github.event.client_payload.status_bar_color }}"
+          ENABLE_PUSH="${{ github.event.client_payload.enable_push }}"
+          ENABLE_OFFLINE="${{ github.event.client_payload.enable_offline }}"
+          OFFLINE_MSG="${{ github.event.client_payload.offline_message }}"
+          ENABLE_ANALYTICS="${{ github.event.client_payload.enable_analytics }}"
+          ENABLE_COOKIES="${{ github.event.client_payload.enable_cookies }}"
+          ENABLE_ADMOB="${{ github.event.client_payload.enable_admob }}"
+          ADMOB_BANNER="${{ github.event.client_payload.admob_banner_id }}"
+          ADMOB_INTERSTITIAL="${{ github.event.client_payload.admob_interstitial_id }}"
+          BUILD_AAB="${{ github.event.client_payload.build_aab }}"
+
+          # Package name
+          if [ -n "$CUSTOM_PKG" ] && [ "$CUSTOM_PKG" != "null" ]; then
+            PACKAGE_NAME="$CUSTOM_PKG"
+          else
+            PACKAGE_NAME="com.webtoapk.$(echo "$APP_NAME" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9' | head -c 30)"
+          fi
+
+          PACKAGE_PATH="$(echo $PACKAGE_NAME | tr '.' '/')"
+
+          # Create directories
+          mkdir -p "app/src/main/java/${PACKAGE_PATH}"
           mkdir -p app/src/main/res/values
           mkdir -p app/src/main/res/layout
+          mkdir -p app/src/main/res/drawable
           mkdir -p app/src/main/res/mipmap-hdpi
           mkdir -p app/src/main/res/mipmap-mdpi
           mkdir -p app/src/main/res/mipmap-xhdpi
           mkdir -p app/src/main/res/mipmap-xxhdpi
           mkdir -p app/src/main/res/mipmap-xxxhdpi
 
-          APP_NAME="${{ github.event.client_payload.app_name }}"
-          WEBSITE_URL="${{ github.event.client_payload.website_url }}"
-          BUILD_ID="${{ github.event.client_payload.build_id }}"
-          ICON_URL="${{ github.event.client_payload.icon_url }}"
-          PACKAGE_NAME="com.webtoapk.$(echo "$APP_NAME" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9' | head -c 30)"
-
-          # Download icon if provided
+          # Download/generate icon
           if [ -n "$ICON_URL" ] && [ "$ICON_URL" != "null" ]; then
             curl -sL "$ICON_URL" -o /tmp/icon_original.png
-            # Resize for different densities using ImageMagick
             for size_dir in "48:mipmap-mdpi" "72:mipmap-hdpi" "96:mipmap-xhdpi" "144:mipmap-xxhdpi" "192:mipmap-xxxhdpi"; do
               SIZE="${size_dir%%:*}"
               DIR="${size_dir##*:}"
               convert /tmp/icon_original.png -resize ${SIZE}x${SIZE} "app/src/main/res/${DIR}/ic_launcher.png"
             done
           else
-            # Generate a simple default icon
             for size_dir in "48:mipmap-mdpi" "72:mipmap-hdpi" "96:mipmap-xhdpi" "144:mipmap-xxhdpi" "192:mipmap-xxxhdpi"; do
               SIZE="${size_dir%%:*}"
               DIR="${size_dir##*:}"
-              convert -size ${SIZE}x${SIZE} xc:'#10B981' -fill white -gravity center -pointsize $((SIZE/3)) -annotate 0 'W' "app/src/main/res/${DIR}/ic_launcher.png"
+              convert -size ${SIZE}x${SIZE} xc:"${SPLASH_COLOR:-#10B981}" -fill white -gravity center -pointsize $((SIZE/3)) -annotate 0 'W' "app/src/main/res/${DIR}/ic_launcher.png"
             done
           fi
+
+          # Splash screen drawable
+          cat > app/src/main/res/drawable/splash_background.xml << SPLASH
+          <?xml version="1.0" encoding="utf-8"?>
+          <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+              <item><shape><solid android:color="${SPLASH_COLOR:-#10B981}" /></shape></item>
+          </layer-list>
+          SPLASH
 
           # settings.gradle
           cat > settings.gradle << 'SETTINGS'
@@ -84,6 +113,12 @@ jobs:
           android.useAndroidX=true
           org.gradle.jvmargs=-Xmx2048m
           PROPS
+
+          # AdMob dependency
+          ADMOB_DEP=""
+          if [ "$ENABLE_ADMOB" = "true" ]; then
+            ADMOB_DEP="implementation 'com.google.android.gms:play-services-ads:23.1.0'"
+          fi
 
           # App build.gradle
           cat > app/build.gradle << APPBUILD
@@ -119,15 +154,48 @@ jobs:
               implementation 'androidx.appcompat:appcompat:1.6.1'
               implementation 'androidx.webkit:webkit:1.8.0'
               implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.1.0'
+              ${ADMOB_DEP}
           }
           APPBUILD
 
-          # AndroidManifest.xml
+          # Offline HTML page
+          if [ "$ENABLE_OFFLINE" = "true" ]; then
+            mkdir -p app/src/main/assets
+            cat > app/src/main/assets/offline.html << OFFHTML
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Offline</title>
+            <style>
+              body { font-family: -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #f5f5f5; color: #333; text-align: center; }
+              .container { padding: 40px; }
+              h1 { font-size: 1.5rem; margin-bottom: 12px; }
+              p { color: #666; }
+              button { margin-top: 20px; padding: 12px 24px; background: ${SPLASH_COLOR:-#10B981}; color: white; border: none; border-radius: 8px; font-size: 1rem; cursor: pointer; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <h1>📶 No Connection</h1>
+              <p>${OFFLINE_MSG:-You are offline. Please check your connection.}</p>
+              <button onclick="location.reload()">Retry</button>
+            </div>
+          </body>
+          </html>
+          OFFHTML
+          fi
+
+          # Build AndroidManifest.xml
+          INTERNET_PERM='<uses-permission android:name="android.permission.INTERNET" />'
+          NETWORK_PERM='<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />'
+
           cat > app/src/main/AndroidManifest.xml << MANIFEST
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-              <uses-permission android:name="android.permission.INTERNET" />
-              <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+              ${INTERNET_PERM}
+              ${NETWORK_PERM}
 
               <application
                   android:allowBackup="true"
@@ -135,21 +203,102 @@ jobs:
                   android:label="${APP_NAME}"
                   android:usesCleartextTraffic="true"
                   android:theme="@style/AppTheme">
+
                   <activity
-                      android:name=".MainActivity"
+                      android:name=".SplashActivity"
                       android:exported="true"
-                      android:configChanges="orientation|screenSize">
+                      android:theme="@style/SplashTheme">
                       <intent-filter>
                           <action android:name="android.intent.action.MAIN" />
                           <category android:name="android.intent.category.LAUNCHER" />
                       </intent-filter>
                   </activity>
+
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="false"
+                      android:configChanges="orientation|screenSize" />
               </application>
           </manifest>
           MANIFEST
 
+          # Styles with splash theme
+          cat > app/src/main/res/values/styles.xml << STYLES
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <style name="AppTheme" parent="Theme.AppCompat.NoActionBar">
+                  <item name="android:windowFullscreen">false</item>
+                  <item name="android:statusBarColor">${STATUS_BAR_COLOR:-#000000}</item>
+              </style>
+              <style name="SplashTheme" parent="Theme.AppCompat.NoActionBar">
+                  <item name="android:windowBackground">@drawable/splash_background</item>
+                  <item name="android:statusBarColor">${SPLASH_COLOR:-#10B981}</item>
+              </style>
+          </resources>
+          STYLES
+
+          # SplashActivity.java
+          cat > "app/src/main/java/${PACKAGE_PATH}/SplashActivity.java" << SPLASH_JAVA
+          package ${PACKAGE_NAME};
+
+          import android.content.Intent;
+          import android.os.Bundle;
+          import android.os.Handler;
+          import androidx.appcompat.app.AppCompatActivity;
+
+          public class SplashActivity extends AppCompatActivity {
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  new Handler().postDelayed(() -> {
+                      startActivity(new Intent(this, MainActivity.class));
+                      finish();
+                  }, 1500);
+              }
+          }
+          SPLASH_JAVA
+
+          # Build cookie manager setup
+          COOKIE_SETUP=""
+          if [ "$ENABLE_COOKIES" = "true" ] || [ "$ENABLE_COOKIES" = "" ]; then
+            COOKIE_SETUP="android.webkit.CookieManager cookieManager = android.webkit.CookieManager.getInstance();
+                  cookieManager.setAcceptCookie(true);
+                  cookieManager.setAcceptThirdPartyCookies(webView, true);"
+          fi
+
+          # Build offline check
+          OFFLINE_CHECK=""
+          if [ "$ENABLE_OFFLINE" = "true" ]; then
+            OFFLINE_CHECK='
+              webView.setWebViewClient(new WebViewClient() {
+                  @Override
+                  public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
+                      view.loadUrl("file:///android_asset/offline.html");
+                  }
+              });'
+          else
+            OFFLINE_CHECK='webView.setWebViewClient(new WebViewClient());'
+          fi
+
+          # Build AdMob init
+          ADMOB_IMPORT=""
+          ADMOB_INIT=""
+          ADMOB_LAYOUT_FIELD=""
+          ADMOB_BANNER_SETUP=""
+          if [ "$ENABLE_ADMOB" = "true" ] && [ -n "$ADMOB_BANNER" ] && [ "$ADMOB_BANNER" != "null" ]; then
+            ADMOB_IMPORT="import com.google.android.gms.ads.MobileAds;
+          import com.google.android.gms.ads.AdRequest;
+          import com.google.android.gms.ads.AdView;
+          import com.google.android.gms.ads.AdSize;"
+            ADMOB_INIT="MobileAds.initialize(this, initializationStatus -> {});"
+            ADMOB_LAYOUT_FIELD="private AdView adView;"
+            ADMOB_BANNER_SETUP="adView = findViewById(R.id.adView);
+                  AdRequest adRequest = new AdRequest.Builder().build();
+                  adView.loadAd(adRequest);"
+          fi
+
           # MainActivity.java
-          cat > app/src/main/java/com/webtoapk/app/MainActivity.java << MAIN
+          cat > "app/src/main/java/${PACKAGE_PATH}/MainActivity.java" << MAIN
           package ${PACKAGE_NAME};
 
           import android.os.Bundle;
@@ -158,12 +307,17 @@ jobs:
           import android.webkit.WebChromeClient;
           import android.webkit.WebSettings;
           import android.view.KeyEvent;
+          import android.net.ConnectivityManager;
+          import android.net.NetworkInfo;
+          import android.content.Context;
           import androidx.appcompat.app.AppCompatActivity;
           import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
+          ${ADMOB_IMPORT}
 
           public class MainActivity extends AppCompatActivity {
               private WebView webView;
               private SwipeRefreshLayout swipeRefresh;
+              ${ADMOB_LAYOUT_FIELD}
 
               @Override
               protected void onCreate(Bundle savedInstanceState) {
@@ -181,16 +335,28 @@ jobs:
                   settings.setCacheMode(WebSettings.LOAD_DEFAULT);
                   settings.setAllowFileAccess(true);
                   settings.setMediaPlaybackRequiresUserGesture(false);
+                  settings.setDatabaseEnabled(true);
 
-                  webView.setWebViewClient(new WebViewClient());
+                  ${COOKIE_SETUP}
+
                   webView.setWebChromeClient(new WebChromeClient());
+                  ${OFFLINE_CHECK}
 
                   swipeRefresh.setOnRefreshListener(() -> {
                       webView.reload();
                       swipeRefresh.setRefreshing(false);
                   });
 
+                  ${ADMOB_INIT}
+                  ${ADMOB_BANNER_SETUP}
+
                   webView.loadUrl("${WEBSITE_URL}");
+              }
+
+              private boolean isOnline() {
+                  ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+                  NetworkInfo netInfo = cm.getActiveNetworkInfo();
+                  return netInfo != null && netInfo.isConnectedOrConnecting();
               }
 
               @Override
@@ -204,12 +370,35 @@ jobs:
           }
           MAIN
 
-          # Move Java file to correct package directory
-          mkdir -p "app/src/main/java/$(echo $PACKAGE_NAME | tr '.' '/')"
-          mv app/src/main/java/com/webtoapk/app/MainActivity.java "app/src/main/java/$(echo $PACKAGE_NAME | tr '.' '/')/"
-
-          # Layout XML
-          cat > app/src/main/res/layout/activity_main.xml << 'LAYOUT'
+          # Layout XML - with optional AdMob banner
+          if [ "$ENABLE_ADMOB" = "true" ] && [ -n "$ADMOB_BANNER" ] && [ "$ADMOB_BANNER" != "null" ]; then
+            cat > app/src/main/res/layout/activity_main.xml << LAYOUT
+          <?xml version="1.0" encoding="utf-8"?>
+          <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+              xmlns:ads="http://schemas.android.com/apk/res-auto"
+              android:layout_width="match_parent"
+              android:layout_height="match_parent"
+              android:orientation="vertical">
+              <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+                  android:id="@+id/swipe_refresh"
+                  android:layout_width="match_parent"
+                  android:layout_height="0dp"
+                  android:layout_weight="1">
+                  <WebView
+                      android:id="@+id/webview"
+                      android:layout_width="match_parent"
+                      android:layout_height="match_parent" />
+              </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+              <com.google.android.gms.ads.AdView
+                  android:id="@+id/adView"
+                  android:layout_width="match_parent"
+                  android:layout_height="wrap_content"
+                  ads:adSize="BANNER"
+                  ads:adUnitId="${ADMOB_BANNER}" />
+          </LinearLayout>
+          LAYOUT
+          else
+            cat > app/src/main/res/layout/activity_main.xml << 'LAYOUT'
           <?xml version="1.0" encoding="utf-8"?>
           <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
               xmlns:android="http://schemas.android.com/apk/res/android"
@@ -222,33 +411,36 @@ jobs:
                   android:layout_height="match_parent" />
           </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
           LAYOUT
-
-          # Theme
-          cat > app/src/main/res/values/styles.xml << 'STYLES'
-          <?xml version="1.0" encoding="utf-8"?>
-          <resources>
-              <style name="AppTheme" parent="Theme.AppCompat.NoActionBar">
-                  <item name="android:windowFullscreen">false</item>
-                  <item name="android:statusBarColor">@android:color/black</item>
-              </style>
-          </resources>
-          STYLES
+          fi
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      - name: Build Debug APK
+      - name: Build APK or AAB
         run: |
-          # Create gradle wrapper
+          BUILD_AAB="${{ github.event.client_payload.build_aab }}"
           gradle wrapper --gradle-version 8.4
           chmod +x gradlew
-          ./gradlew assembleDebug
+          if [ "$BUILD_AAB" = "true" ]; then
+            ./gradlew bundleRelease
+          else
+            ./gradlew assembleDebug
+          fi
 
       - name: Upload APK artifact
+        if: ${{ github.event.client_payload.build_aab != 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: "apk-${{ github.event.client_payload.build_id }}"
           path: app/build/outputs/apk/debug/*.apk
+          retention-days: 7
+
+      - name: Upload AAB artifact
+        if: ${{ github.event.client_payload.build_aab == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: "apk-${{ github.event.client_payload.build_id }}"
+          path: app/build/outputs/bundle/release/*.aab
           retention-days: 7
 
       - name: Notify completion

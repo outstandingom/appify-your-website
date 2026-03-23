@@ -1,34 +1,22 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Globe, Upload, Smartphone, Loader2, Download, CheckCircle2, AlertCircle } from "lucide-react";
+import { Loader2, Download, CheckCircle2, AlertCircle, Sparkles } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-
-type Step = "input" | "generating" | "done" | "error";
+import CoreFields from "./converter/CoreFields";
+import FeatureToggles from "./converter/FeatureToggles";
+import { DEFAULT_CONFIG, getTier, getCreditCost } from "./converter/types";
+import type { BuildConfig, Step } from "./converter/types";
 
 const ConverterForm = () => {
-  const [url, setUrl] = useState("");
-  const [appName, setAppName] = useState("");
-  const [logo, setLogo] = useState<File | null>(null);
-  const [logoPreview, setLogoPreview] = useState<string | null>(null);
-  const [step, setStep] = useState<Step>("input");
+  const [config, setConfig] = useState<BuildConfig>({ ...DEFAULT_CONFIG });
+  const [step, setStep] = useState<Step>("config");
   const [buildId, setBuildId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
-  const fileRef = useRef<HTMLInputElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setLogo(file);
-      const reader = new FileReader();
-      reader.onloadend = () => setLogoPreview(reader.result as string);
-      reader.readAsDataURL(file);
-    }
-  };
+  const patch = (p: Partial<BuildConfig>) => setConfig((c) => ({ ...c, ...p }));
 
-  const isValid = url.trim().length > 0 && appName.trim().length > 0;
+  const isValid = config.websiteUrl.trim().length > 0 && config.appName.trim().length > 0;
 
   // Poll build status
   useEffect(() => {
@@ -50,7 +38,6 @@ const ConverterForm = () => {
           if (pollRef.current) clearInterval(pollRef.current);
         }
       }, 5000);
-
       return () => {
         if (pollRef.current) clearInterval(pollRef.current);
       };
@@ -63,23 +50,34 @@ const ConverterForm = () => {
     setErrorMsg("");
 
     try {
-      // Ensure URL has protocol
-      let websiteUrl = url.trim();
-      if (!websiteUrl.startsWith("http")) {
-        websiteUrl = "https://" + websiteUrl;
-      }
+      let websiteUrl = config.websiteUrl.trim();
+      if (!websiteUrl.startsWith("http")) websiteUrl = "https://" + websiteUrl;
+
+      const tier = getTier(config);
 
       const { data, error } = await supabase.functions.invoke("trigger-build", {
         body: {
           website_url: websiteUrl,
-          app_name: appName.trim(),
-          icon_url: logoPreview || null,
+          app_name: config.appName.trim(),
+          icon_url: config.logoPreview || null,
+          package_name: config.packageName.trim() || null,
+          splash_color: config.splashColor,
+          status_bar_color: config.statusBarColor,
+          enable_push: config.enablePush,
+          enable_offline: config.enableOffline,
+          offline_message: config.offlineMessage,
+          enable_analytics: config.enableAnalytics,
+          enable_cookies: config.enableCookies,
+          enable_admob: config.enableAdmob,
+          admob_banner_id: config.admobBannerId || null,
+          admob_interstitial_id: config.admobInterstitialId || null,
+          build_aab: config.buildAab,
+          tier,
         },
       });
 
       if (error) throw new Error(error.message);
       if (data?.error) throw new Error(data.error);
-
       setBuildId(data.build_id);
     } catch (err: any) {
       setStep("error");
@@ -87,22 +85,24 @@ const ConverterForm = () => {
     }
   };
 
-  const handleDownload = async () => {
+  const handleDownload = () => {
     if (!buildId) return;
     const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-    const url = `https://${projectId}.supabase.co/functions/v1/download-apk?build_id=${buildId}`;
-    window.open(url, "_blank");
+    window.open(
+      `https://${projectId}.supabase.co/functions/v1/download-apk?build_id=${buildId}`,
+      "_blank"
+    );
   };
 
   const handleReset = () => {
-    setStep("input");
-    setUrl("");
-    setAppName("");
-    setLogo(null);
-    setLogoPreview(null);
+    setStep("config");
+    setConfig({ ...DEFAULT_CONFIG });
     setBuildId(null);
     setErrorMsg("");
   };
+
+  const tier = getTier(config);
+  const cost = getCreditCost(tier);
 
   return (
     <div className="w-full max-w-lg mx-auto">
@@ -112,82 +112,32 @@ const ConverterForm = () => {
           <div
             className="h-full bg-primary transition-all duration-700 ease-out"
             style={{
-              width: step === "input" ? "33%" : step === "generating" ? "66%" : "100%",
+              width: step === "config" ? "33%" : step === "generating" ? "66%" : "100%",
             }}
           />
         </div>
 
-        <div className="p-8 space-y-6">
-          {step === "input" && (
-            <div className="space-y-5 animate-fade-up" style={{ opacity: 0 }}>
-              <div className="space-y-2">
-                <Label htmlFor="url" className="text-sm font-medium text-foreground flex items-center gap-2">
-                  <Globe className="w-4 h-4 text-primary" />
-                  Website URL
-                </Label>
-                <Input
-                  id="url"
-                  type="url"
-                  placeholder="https://your-website.com"
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                  className="h-12 text-base bg-surface-sunken border-border/40 focus:border-primary focus:ring-primary/20"
-                />
-              </div>
+        <div className="p-6 md:p-8">
+          {step === "config" && (
+            <div className="space-y-6 animate-fade-up" style={{ opacity: 0 }}>
+              <CoreFields config={config} onChange={patch} />
 
-              <div className="space-y-2">
-                <Label htmlFor="appName" className="text-sm font-medium text-foreground flex items-center gap-2">
-                  <Smartphone className="w-4 h-4 text-primary" />
-                  App Name
-                </Label>
-                <Input
-                  id="appName"
-                  placeholder="My Awesome App"
-                  value={appName}
-                  onChange={(e) => setAppName(e.target.value)}
-                  className="h-12 text-base bg-surface-sunken border-border/40 focus:border-primary focus:ring-primary/20"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-sm font-medium text-foreground flex items-center gap-2">
-                  <Upload className="w-4 h-4 text-primary" />
-                  App Icon
-                  <span className="text-muted-foreground font-normal">(optional)</span>
-                </Label>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept="image/png,image/jpeg,image/svg+xml"
-                  className="hidden"
-                  onChange={handleLogoChange}
-                />
-                <button
-                  type="button"
-                  onClick={() => fileRef.current?.click()}
-                  className="w-full h-28 rounded-xl border-2 border-dashed border-border/60 hover:border-primary/40 bg-surface-sunken flex flex-col items-center justify-center gap-2 transition-colors cursor-pointer group"
-                >
-                  {logoPreview ? (
-                    <img src={logoPreview} alt="Logo preview" className="w-14 h-14 rounded-xl object-cover shadow-md" />
-                  ) : (
-                    <>
-                      <Upload className="w-6 h-6 text-muted-foreground group-hover:text-primary transition-colors" />
-                      <span className="text-sm text-muted-foreground group-hover:text-foreground transition-colors">
-                        Click to upload PNG, JPG or SVG
-                      </span>
-                    </>
-                  )}
-                </button>
+              <div className="border-t border-border/40 pt-4">
+                <FeatureToggles config={config} onChange={patch} />
               </div>
 
               <Button
                 variant="hero"
                 size="lg"
-                className="w-full h-13 rounded-xl text-base"
+                className="w-full h-13 rounded-xl text-base gap-2"
                 disabled={!isValid}
                 onClick={handleGenerate}
               >
-                Generate APK
+                <Sparkles className="w-4 h-4" />
+                Generate {config.buildAab ? "AAB" : "APK"}
+                {cost > 0 && (
+                  <span className="text-xs opacity-70 ml-1">({cost} credits)</span>
+                )}
               </Button>
             </div>
           )}
@@ -201,12 +151,12 @@ const ConverterForm = () => {
                 <div className="absolute -inset-3 rounded-3xl border border-primary/20 animate-spin-slow" />
               </div>
               <div className="text-center space-y-2">
-                <p className="font-display text-lg font-semibold text-foreground">Building your APK...</p>
+                <p className="font-display text-lg font-semibold">Building your {config.buildAab ? "AAB" : "APK"}...</p>
                 <p className="text-sm text-muted-foreground">
-                  Wrapping <span className="text-foreground font-medium">{appName}</span> for Android
+                  Wrapping <span className="text-foreground font-medium">{config.appName}</span> for Android
                 </p>
                 <p className="text-xs text-muted-foreground mt-2">
-                  This may take 2-5 minutes. Don't close this page.
+                  This may take 2–5 minutes. Don't close this page.
                 </p>
               </div>
             </div>
@@ -218,15 +168,15 @@ const ConverterForm = () => {
                 <CheckCircle2 className="w-10 h-10 text-primary" />
               </div>
               <div className="text-center space-y-2">
-                <p className="font-display text-lg font-semibold text-foreground">Your APK is ready!</p>
+                <p className="font-display text-lg font-semibold">Your {config.buildAab ? "AAB" : "APK"} is ready!</p>
                 <p className="text-sm text-muted-foreground">
-                  <span className="text-foreground font-medium">{appName}</span> has been generated
+                  <span className="text-foreground font-medium">{config.appName}</span> has been generated
                 </p>
               </div>
               <div className="flex flex-col w-full gap-3">
                 <Button variant="hero" size="lg" className="w-full h-13 rounded-xl gap-2" onClick={handleDownload}>
                   <Download className="w-5 h-5" />
-                  Download APK
+                  Download {config.buildAab ? "AAB" : "APK"}
                 </Button>
                 <Button variant="ghost" onClick={handleReset} className="text-muted-foreground">
                   Convert another website
@@ -241,7 +191,7 @@ const ConverterForm = () => {
                 <AlertCircle className="w-10 h-10 text-destructive" />
               </div>
               <div className="text-center space-y-2">
-                <p className="font-display text-lg font-semibold text-foreground">Build failed</p>
+                <p className="font-display text-lg font-semibold">Build failed</p>
                 <p className="text-sm text-muted-foreground">{errorMsg}</p>
               </div>
               <Button variant="ghost" onClick={handleReset} className="text-muted-foreground">
