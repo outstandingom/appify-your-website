@@ -464,37 +464,66 @@ jobs:
                   webView = findViewById(R.id.webview);
                   swipeRefresh = findViewById(R.id.swipe_refresh);
 
-                  // ── Cookie Module ──
-                  setupCookies();
+              // ── Cookie Module ──
+              setupCookies();
 
-                  // ── WebView Settings Module ──
-                  setupWebViewSettings();
+              // ── Request all runtime permissions upfront ──
+              requestAllPermissions();
 
-                  // ── Permission Module (camera, mic, geolocation) ──
-                  setupWebChromeClient();
+              // ── WebView Settings Module ──
+              setupWebViewSettings();
 
-                  // ── Offline Module ──
-                  setupWebViewClient();
+              // ── Permission Module (camera, mic, geolocation) ──
+              setupWebChromeClient();
 
-                  // ── Pull-to-Refresh Module ──
-                  swipeRefresh.setColorSchemeColors(0xFF10B981);
-                  swipeRefresh.setOnRefreshListener(() -> {
-                      webView.reload();
-                  });
+              // ── Offline Module ──
+              setupWebViewClient();
 
-                  // ── AdMob Module ──
-                  setupAdMob();
+              // ── Pull-to-Refresh Module ──
+              swipeRefresh.setColorSchemeColors(0xFF10B981);
+              swipeRefresh.setOnRefreshListener(() -> {
+                  webView.reload();
+              });
 
-                  // ── Push Notification Permission Module ──
-                  requestNotificationPermission();
+              // ── AdMob Module ──
+              setupAdMob();
 
-                  // ── Load URL ──
-                  if (isOnline()) {
-                      webView.loadUrl("${WEBSITE_URL}");
-                  } else {
-                      loadOfflinePage();
+              // ── Load URL ──
+              if (isOnline()) {
+                  webView.loadUrl("${WEBSITE_URL}");
+              } else {
+                  loadOfflinePage();
+              }
+          }
+
+          // ═══════════════════════════════════════
+          // REQUEST ALL PERMISSIONS UPFRONT
+          // ═══════════════════════════════════════
+          private void requestAllPermissions() {
+              java.util.List<String> permsNeeded = new java.util.ArrayList<>();
+
+              // Location
+              if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                  permsNeeded.add(Manifest.permission.ACCESS_FINE_LOCATION);
+                  permsNeeded.add(Manifest.permission.ACCESS_COARSE_LOCATION);
+              }
+
+              // Camera
+              if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                  permsNeeded.add(Manifest.permission.CAMERA);
+              }
+
+              // Notifications (Android 13+)
+              if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                  if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                      permsNeeded.add(Manifest.permission.POST_NOTIFICATIONS);
                   }
               }
+
+              if (!permsNeeded.isEmpty()) {
+                  ActivityCompat.requestPermissions(this, permsNeeded.toArray(new String[0]), ALL_PERMISSIONS_CODE);
+              }
+          }
 
               // ═══════════════════════════════════════
               // COOKIE MODULE
