@@ -421,6 +421,7 @@ jobs:
           import android.net.Uri;
           import android.os.Build;
           import android.os.Bundle;
+          import android.provider.MediaStore;
           import android.view.KeyEvent;
           import android.view.View;
           import android.webkit.CookieManager;
@@ -445,9 +446,15 @@ jobs:
               private WebView webView;
               private SwipeRefreshLayout swipeRefresh;
               private ValueCallback<Uri[]> fileUploadCallback;
+              private GeolocationPermissions.Callback geoCallback;
+              private String geoOrigin;
+              private PermissionRequest pendingWebPermissionRequest;
               private static final int FILE_CHOOSER_REQUEST = 1001;
-              private static final int PERMISSION_REQUEST_CODE = 2001;
+              private static final int CAMERA_PERMISSION_FOR_UPLOAD = 2001;
+              private static final int LOCATION_PERMISSION_CODE = 2002;
+              private static final int WEB_CAMERA_PERMISSION_CODE = 2003;
               private static final int NOTIFICATION_PERMISSION_CODE = 3001;
+              private static final int ALL_PERMISSIONS_CODE = 4001;
 
               @Override
               protected void onCreate(Bundle savedInstanceState) {
