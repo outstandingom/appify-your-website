@@ -560,7 +560,7 @@ jobs:
               // ═══════════════════════════════════════
               private void setupWebChromeClient() {
                   webView.setWebChromeClient(new WebChromeClient() {
-                      // File upload support (camera, gallery, files)
+                      // File upload support
                       @Override
                       public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
                           if (fileUploadCallback != null) {
@@ -568,55 +568,47 @@ jobs:
                           }
                           fileUploadCallback = callback;
 
-                          // Check camera permission
                           if (ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-                              ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.CAMERA}, PERMISSION_REQUEST_CODE);
+                              ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.CAMERA}, CAMERA_PERMISSION_FOR_UPLOAD);
                               return true;
                           }
-
-                          Intent intent = params.createIntent();
-                          try {
-                              startActivityForResult(intent, FILE_CHOOSER_REQUEST);
-                          } catch (Exception e) {
-                              fileUploadCallback = null;
-                              Toast.makeText(MainActivity.this, "Cannot open file chooser", Toast.LENGTH_SHORT).show();
-                              return false;
-                          }
+                          launchFileChooser();
                           return true;
                       }
 
-                      // Web permissions (camera, microphone)
+                      // Web permissions (camera, microphone for WebRTC etc.)
                       @Override
                       public void onPermissionRequest(final PermissionRequest request) {
                           runOnUiThread(() -> {
                               String[] resources = request.getResources();
                               boolean needsCamera = false;
-                              boolean needsMic = false;
                               for (String r : resources) {
                                   if (r.equals(PermissionRequest.RESOURCE_VIDEO_CAPTURE)) needsCamera = true;
-                                  if (r.equals(PermissionRequest.RESOURCE_AUDIO_CAPTURE)) needsMic = true;
                               }
 
-                              java.util.List<String> perms = new java.util.ArrayList<>();
                               if (needsCamera && ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-                                  perms.add(Manifest.permission.CAMERA);
+                                  pendingWebPermissionRequest = request;
+                                  ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.CAMERA}, WEB_CAMERA_PERMISSION_CODE);
+                              } else {
+                                  request.grant(resources);
                               }
-
-                              if (!perms.isEmpty()) {
-                                  ActivityCompat.requestPermissions(MainActivity.this, perms.toArray(new String[0]), PERMISSION_REQUEST_CODE);
-                              }
-
-                              request.grant(resources);
                           });
                       }
 
-                      // Geolocation permission
+                      // Geolocation — request Android runtime permission first
                       @Override
                       public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
-                          callback.invoke(origin, true, false);
+                          if (ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                              callback.invoke(origin, true, false);
+                          } else {
+                              geoOrigin = origin;
+                              geoCallback = callback;
+                              ActivityCompat.requestPermissions(MainActivity.this,
+                                  new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION},
+                                  LOCATION_PERMISSION_CODE);
+                          }
                       }
 
-                      // Progress indicator
                       @Override
                       public void onProgressChanged(WebView view, int newProgress) {
                           if (newProgress >= 100) {
@@ -624,6 +616,25 @@ jobs:
                           }
                       }
                   });
+              }
+
+              private void launchFileChooser() {
+                  Intent takePictureIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+                  Intent pickIntent = new Intent(Intent.ACTION_GET_CONTENT);
+                  pickIntent.setType("*/*");
+                  Intent chooserIntent = Intent.createChooser(pickIntent, "Select or Capture");
+                  if (takePictureIntent.resolveActivity(getPackageManager()) != null) {
+                      chooserIntent.putExtra(Intent.EXTRA_INITIAL_INTENTS, new Intent[]{takePictureIntent});
+                  }
+                  try {
+                      startActivityForResult(chooserIntent, FILE_CHOOSER_REQUEST);
+                  } catch (Exception e) {
+                      if (fileUploadCallback != null) {
+                          fileUploadCallback.onReceiveValue(null);
+                          fileUploadCallback = null;
+                      }
+                      Toast.makeText(this, "Cannot open file chooser", Toast.LENGTH_SHORT).show();
+                  }
               }
 
               // ═══════════════════════════════════════
