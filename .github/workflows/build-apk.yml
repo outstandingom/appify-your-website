@@ -720,27 +720,6 @@ jobs:
               }
 
               // ═══════════════════════════════════════
-              // PUSH NOTIFICATION PERMISSION MODULE
-              // ═══════════════════════════════════════
-              private void requestNotificationPermission() {
-                  boolean pushEnabled = ${ENABLE_PUSH};
-                  if (!pushEnabled) return;
-
-                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                      if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                          new AlertDialog.Builder(this)
-                              .setTitle("Enable Notifications")
-                              .setMessage("Would you like to receive push notifications from ${APP_NAME}?")
-                              .setPositiveButton("Allow", (d, w) -> {
-                                  ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.POST_NOTIFICATIONS}, NOTIFICATION_PERMISSION_CODE);
-                              })
-                              .setNegativeButton("Not Now", null)
-                              .show();
-                      }
-                  }
-              }
-
-              // ═══════════════════════════════════════
               // NAVIGATION MODULE
               // ═══════════════════════════════════════
               @Override
