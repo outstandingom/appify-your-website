@@ -782,10 +782,40 @@ jobs:
               @Override
               public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
                   super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-                  if (requestCode == NOTIFICATION_PERMISSION_CODE) {
-                      if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                          Toast.makeText(this, "Notifications enabled!", Toast.LENGTH_SHORT).show();
-                      }
+
+                  boolean granted = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+
+                  switch (requestCode) {
+                      case CAMERA_PERMISSION_FOR_UPLOAD:
+                          // Camera permission resolved — launch file chooser regardless
+                          launchFileChooser();
+                          break;
+
+                      case LOCATION_PERMISSION_CODE:
+                          // Geolocation permission resolved — inform WebView
+                          if (geoCallback != null) {
+                              geoCallback.invoke(geoOrigin, granted, false);
+                              geoCallback = null;
+                              geoOrigin = null;
+                          }
+                          break;
+
+                      case WEB_CAMERA_PERMISSION_CODE:
+                          // WebRTC camera permission resolved
+                          if (pendingWebPermissionRequest != null) {
+                              if (granted) {
+                                  pendingWebPermissionRequest.grant(pendingWebPermissionRequest.getResources());
+                              } else {
+                                  pendingWebPermissionRequest.deny();
+                              }
+                              pendingWebPermissionRequest = null;
+                          }
+                          break;
+
+                      case NOTIFICATION_PERMISSION_CODE:
+                      case ALL_PERMISSIONS_CODE:
+                          // Informational only
+                          break;
                   }
               }
 
