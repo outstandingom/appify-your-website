@@ -190,12 +190,19 @@ jobs:
           PERMISSIONS="${PERMISSIONS}"$'\n''    <uses-permission android:name="android.permission.CAMERA" />'
           PERMISSIONS="${PERMISSIONS}"$'\n''    <uses-feature android:name="android.hardware.camera" android:required="false" />'
 
+          # Location permissions
+          PERMISSIONS="${PERMISSIONS}"$'\n''    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />'
+          PERMISSIONS="${PERMISSIONS}"$'\n''    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />'
+
           # Storage permissions for downloads
           PERMISSIONS="${PERMISSIONS}"$'\n''    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />'
           PERMISSIONS="${PERMISSIONS}"$'\n''    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />'
 
           # Vibrate for notifications
           PERMISSIONS="${PERMISSIONS}"$'\n''    <uses-permission android:name="android.permission.VIBRATE" />'
+
+          # Microphone for WebRTC
+          PERMISSIONS="${PERMISSIONS}"$'\n''    <uses-permission android:name="android.permission.RECORD_AUDIO" />'
 
           # Push notifications (POST_NOTIFICATIONS for Android 13+)
           if [ "$ENABLE_PUSH" = "true" ]; then
