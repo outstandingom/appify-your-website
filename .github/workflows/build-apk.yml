@@ -256,9 +256,30 @@ jobs:
                       android:name=".MainActivity"
                       android:exported="false"
                       android:configChanges="orientation|screenSize|keyboard|keyboardHidden" />
+
+                  <provider
+                      android:name="androidx.core.content.FileProvider"
+                      android:authorities="${PACKAGE_NAME}.fileprovider"
+                      android:exported="false"
+                      android:grantUriPermissions="true">
+                      <meta-data
+                          android:name="android.support.FILE_PROVIDER_PATHS"
+                          android:resource="@xml/file_paths" />
+                  </provider>
               </application>
           </manifest>
           EOF
+
+          # File provider paths
+          mkdir -p app/src/main/res/xml
+          cat > app/src/main/res/xml/file_paths.xml << 'XMLEOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <paths>
+              <external-path name="external" path="." />
+              <cache-path name="cache" path="." />
+              <external-cache-path name="external_cache" path="." />
+          </paths>
+          XMLEOF
 
       - name: "Module 6 — Network security config"
         run: |
