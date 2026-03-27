@@ -733,16 +733,35 @@ jobs:
                       @Override
                       public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                           String url = request.getUrl().toString();
-                          // Open external links (tel, mailto, intent) in external apps
-                          if (url.startsWith("tel:") || url.startsWith("mailto:") || url.startsWith("intent:")) {
+
+                          // Phone calls — use CALL_PHONE if granted, otherwise ACTION_DIAL
+                          if (url.startsWith("tel:")) {
                               try {
-                                  Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-                                  startActivity(intent);
-                              } catch (Exception e) {
-                                  // ignore
-                              }
+                                  if (ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED) {
+                                      startActivity(new Intent(Intent.ACTION_CALL, Uri.parse(url)));
+                                  } else {
+                                      startActivity(new Intent(Intent.ACTION_DIAL, Uri.parse(url)));
+                                  }
+                              } catch (Exception e) { /* ignore */ }
                               return true;
                           }
+
+                          // Email, SMS, WhatsApp, Intent schemes
+                          if (url.startsWith("mailto:") || url.startsWith("sms:") || url.startsWith("whatsapp:") || url.startsWith("intent:") || url.startsWith("geo:")) {
+                              try {
+                                  startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+                              } catch (Exception e) { /* ignore */ }
+                              return true;
+                          }
+
+                          // Market/Play Store links
+                          if (url.startsWith("market:") || url.contains("play.google.com/store")) {
+                              try {
+                                  startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+                              } catch (Exception e) { /* ignore */ }
+                              return true;
+                          }
+
                           return false;
                       }
 
