@@ -838,10 +838,14 @@ jobs:
                   if (requestCode == FILE_CHOOSER_REQUEST) {
                       if (fileUploadCallback != null) {
                           Uri[] results = null;
-                          if (resultCode == Activity.RESULT_OK && data != null) {
-                              String dataString = data.getDataString();
-                              if (dataString != null) {
-                                  results = new Uri[]{Uri.parse(dataString)};
+                          if (resultCode == Activity.RESULT_OK) {
+                              // Check if data came from file picker
+                              if (data != null && data.getDataString() != null) {
+                                  results = new Uri[]{Uri.parse(data.getDataString())};
+                              }
+                              // Check if camera captured an image via FileProvider
+                              else if (cameraImageUri != null) {
+                                  results = new Uri[]{cameraImageUri};
                               }
                           }
                           fileUploadCallback.onReceiveValue(results);
