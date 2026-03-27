@@ -678,12 +678,32 @@ jobs:
                   });
               }
 
+              private Uri cameraImageUri;
+
               private void launchFileChooser() {
+                  // Camera capture with FileProvider
                   Intent takePictureIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+                  if (takePictureIntent.resolveActivity(getPackageManager()) != null) {
+                      try {
+                          java.io.File photoFile = new java.io.File(getExternalCacheDir(), "camera_" + System.currentTimeMillis() + ".jpg");
+                          cameraImageUri = androidx.core.content.FileProvider.getUriForFile(this, "${PACKAGE_NAME}.fileprovider", photoFile);
+                          takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, cameraImageUri);
+                          takePictureIntent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                      } catch (Exception e) {
+                          takePictureIntent = null;
+                      }
+                  } else {
+                      takePictureIntent = null;
+                  }
+
+                  // File picker — all file types
                   Intent pickIntent = new Intent(Intent.ACTION_GET_CONTENT);
                   pickIntent.setType("*/*");
-                  Intent chooserIntent = Intent.createChooser(pickIntent, "Select or Capture");
-                  if (takePictureIntent.resolveActivity(getPackageManager()) != null) {
+                  pickIntent.addCategory(Intent.CATEGORY_OPENABLE);
+                  pickIntent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"image/*", "video/*", "audio/*", "application/pdf", "*/*"});
+
+                  Intent chooserIntent = Intent.createChooser(pickIntent, "Select File");
+                  if (takePictureIntent != null) {
                       chooserIntent.putExtra(Intent.EXTRA_INITIAL_INTENTS, new Intent[]{takePictureIntent});
                   }
                   try {
