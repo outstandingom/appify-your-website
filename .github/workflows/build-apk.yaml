@@ -10,43 +10,32 @@ jobs:
     env:
       BUILD_ID: ${{ github.event.client_payload.build_id }}
       CALLBACK_URL: ${{ github.event.client_payload.callback_url }}
+      APP_CONFIG: ${{ github.event.client_payload.config }}
 
     steps:
-      # ──────────────────────────────────────────────
-      # MODULE 1: Environment Setup
-      # ──────────────────────────────────────────────
-      - name: "Module 1 — Setup JDK & tools"
+      # ── Step 1: Checkout & Setup ──
+      - name: "Setup — Checkout repository"
+        uses: actions/checkout@v4
+
+      - name: "Setup — Install JDK 17"
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: "Module 1 — Install ImageMagick & jq"
-        run: sudo apt-get update && sudo apt-get install -y imagemagick jq
-
-      # ──────────────────────────────────────────────
-      # MODULE 2: Parse Config
-      # ──────────────────────────────────────────────
-      - name: "Module 2 — Parse build config"
-        id: cfg
+      - name: "Setup — Install Python 3 & ImageMagick"
         run: |
-          CONFIG='${{ github.event.client_payload.config }}'
+          sudo apt-get update && sudo apt-get install -y imagemagick python3
+          python3 --version
 
-          echo "APP_NAME=$(echo "$CONFIG" | jq -r '.app_name')" >> $GITHUB_ENV
-          echo "WEBSITE_URL=$(echo "$CONFIG" | jq -r '.website_url')" >> $GITHUB_ENV
-          echo "ICON_URL=$(echo "$CONFIG" | jq -r '.icon_url // empty')" >> $GITHUB_ENV
-          echo "SPLASH_COLOR=$(echo "$CONFIG" | jq -r '.splash_color // "#10B981"')" >> $GITHUB_ENV
-          echo "STATUS_BAR_COLOR=$(echo "$CONFIG" | jq -r '.status_bar_color // "#000000"')" >> $GITHUB_ENV
-          echo "ENABLE_PUSH=$(echo "$CONFIG" | jq -r '.enable_push // false')" >> $GITHUB_ENV
-          echo "ENABLE_OFFLINE=$(echo "$CONFIG" | jq -r '.enable_offline // false')" >> $GITHUB_ENV
-          echo "OFFLINE_MSG=$(echo "$CONFIG" | jq -r '.offline_message // "You are offline."')" >> $GITHUB_ENV
-          echo "ENABLE_ANALYTICS=$(echo "$CONFIG" | jq -r '.enable_analytics // false')" >> $GITHUB_ENV
-          echo "ENABLE_COOKIES=$(echo "$CONFIG" | jq -r '.enable_cookies // true')" >> $GITHUB_ENV
-          echo "ENABLE_ADMOB=$(echo "$CONFIG" | jq -r '.enable_admob // false')" >> $GITHUB_ENV
-          echo "ADMOB_BANNER=$(echo "$CONFIG" | jq -r '.admob_banner_id // empty')" >> $GITHUB_ENV
-          echo "ADMOB_INTERSTITIAL=$(echo "$CONFIG" | jq -r '.admob_interstitial_id // empty')" >> $GITHUB_ENV
-          echo "BUILD_AAB=$(echo "$CONFIG" | jq -r '.build_aab // false')" >> $GITHUB_ENV
+      # ── Step 2: Run Python Orchestrator ──
+      - name: "Orchestrator — Generate Android project"
+        run: python3 orchestrator.py
 
+<<<<<<< HEAD:.github/workflows/build-apk.yml
+      # ── Step 3: Gradle Build ──
+      - name: "Build — Setup Gradle"
+=======
           # Package name
           CUSTOM_PKG=$(echo "$CONFIG" | jq -r '.package_name // empty')
           APP=$(echo "$CONFIG" | jq -r '.app_name')
@@ -971,22 +960,24 @@ jobs:
       # MODULE 13: Build APK/AAB
       # ──────────────────────────────────────────────
       - name: "Module 13 — Setup Gradle"
+>>>>>>> eeeb93ba28a0f3a7e047c19f42b8d53b2a801545:.github/workflows/build-apk.yaml
         uses: gradle/actions/setup-gradle@v3
 
-      - name: "Module 13 — Build APK or AAB"
+      - name: "Build — Compile APK or AAB"
         run: |
           gradle wrapper --gradle-version 8.4
           chmod +x gradlew
-          if [ "$BUILD_AAB" = "true" ]; then
+
+          if [ -f ".build_aab" ]; then
+            echo "Building AAB (release)..."
             ./gradlew bundleRelease --no-daemon --stacktrace
           else
+            echo "Building APK (debug)..."
             ./gradlew assembleDebug --no-daemon --stacktrace
           fi
 
-      # ──────────────────────────────────────────────
-      # MODULE 14: Upload & Notify
-      # ──────────────────────────────────────────────
-      - name: "Module 14 — Upload artifact"
+      # ── Step 4: Upload & Notify ──
+      - name: "Artifact — Upload APK/AAB"
         uses: actions/upload-artifact@v4
         with:
           name: "apk-${{ github.event.client_payload.build_id }}"
@@ -995,7 +986,7 @@ jobs:
             app/build/outputs/bundle/release/*.aab
           retention-days: 7
 
-      - name: "Module 14 — Notify callback"
+      - name: "Callback — Notify build result"
         if: always()
         run: |
           STATUS="${{ job.status }}"
