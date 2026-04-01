@@ -32,10 +32,7 @@ jobs:
       - name: "Orchestrator — Generate Android project"
         run: python3 orchestrator.py
 
-<<<<<<< HEAD:.github/workflows/build-apk.yml
-      # ── Step 3: Gradle Build ──
-      - name: "Build — Setup Gradle"
-=======
+
           # Package name
           CUSTOM_PKG=$(echo "$CONFIG" | jq -r '.package_name // empty')
           APP=$(echo "$CONFIG" | jq -r '.app_name')
@@ -960,7 +957,7 @@ jobs:
       # MODULE 13: Build APK/AAB
       # ──────────────────────────────────────────────
       - name: "Module 13 — Setup Gradle"
->>>>>>> eeeb93ba28a0f3a7e047c19f42b8d53b2a801545:.github/workflows/build-apk.yaml
+
         uses: gradle/actions/setup-gradle@v3
 
       - name: "Build — Compile APK or AAB"
