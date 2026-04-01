@@ -41,10 +41,11 @@ jobs:
           gradle wrapper --gradle-version 8.4
           chmod +x gradlew
 
-          BUILD_AAB=$(echo "$APP_CONFIG" | python3 -c "import sys,json; print(json.load(sys.stdin).get('build_aab', False))")
-          if [ "$BUILD_AAB" = "True" ]; then
+          if [ -f ".build_aab" ]; then
+            echo "Building AAB (release)..."
             ./gradlew bundleRelease --no-daemon --stacktrace
           else
+            echo "Building APK (debug)..."
             ./gradlew assembleDebug --no-daemon --stacktrace
           fi
 
