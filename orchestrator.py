@@ -965,6 +965,12 @@ if __name__ == "__main__":
     module_g_splash_activity()
     module_h_main_activity()
 
+    # Write flag file for the workflow to detect build type
+    if BUILD_AAB:
+        with open(".build_aab", "w") as f:
+            f.write("true")
+        print("  ✓ .build_aab flag written (AAB build)")
+
     print("\n" + "=" * 60)
     print("  ✅ All modules complete. Ready for Gradle build.")
     print("=" * 60)
