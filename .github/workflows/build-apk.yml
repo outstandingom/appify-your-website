@@ -10,7 +10,7 @@ jobs:
     env:
       BUILD_ID: ${{ github.event.client_payload.build_id }}
       CALLBACK_URL: ${{ github.event.client_payload.callback_url }}
-      APP_CONFIG: ${{ toJson(github.event.client_payload.config) }}
+      APP_CONFIG: ${{ github.event.client_payload.config }}
 
     steps:
       - name: Checkout repository
