@@ -10,37 +10,33 @@ jobs:
     env:
       BUILD_ID: ${{ github.event.client_payload.build_id }}
       CALLBACK_URL: ${{ github.event.client_payload.callback_url }}
-      APP_CONFIG: ${{ github.event.client_payload.config }}
+      APP_CONFIG: ${{ toJson(github.event.client_payload.config) }}
 
     steps:
-      # ── Step 1: Checkout & Setup ──
-      - name: "Setup — Checkout repository"
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: "Setup — Install JDK 17"
+      - name: Install JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: "Setup — Install Python 3 & ImageMagick"
+      - name: Install Python 3 and ImageMagick
         run: |
           sudo apt-get update && sudo apt-get install -y imagemagick python3
           python3 --version
 
-      # ── Step 2: Run Python Orchestrator ──
-      - name: "Orchestrator — Generate Android project"
+      - name: Generate Android project
         run: python3 orchestrator.py
 
-      # ── Step 3: Gradle Build ──
-      - name: "Build — Setup Gradle"
+      - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      - name: "Build — Compile APK or AAB"
+      - name: Compile APK or AAB
         run: |
           gradle wrapper --gradle-version 8.4
           chmod +x gradlew
-
           if [ -f ".build_aab" ]; then
             echo "Building AAB (release)..."
             ./gradlew bundleRelease --no-daemon --stacktrace
@@ -49,8 +45,7 @@ jobs:
             ./gradlew assembleDebug --no-daemon --stacktrace
           fi
 
-      # ── Step 4: Upload & Notify ──
-      - name: "Artifact — Upload APK/AAB"
+      - name: Upload APK or AAB
         uses: actions/upload-artifact@v4
         with:
           name: "apk-${{ github.event.client_payload.build_id }}"
@@ -59,12 +54,11 @@ jobs:
             app/build/outputs/bundle/release/*.aab
           retention-days: 7
 
-      - name: "Callback — Notify build result"
+      - name: Notify build result
         if: always()
         run: |
           STATUS="${{ job.status }}"
           RUN_ID="${{ github.run_id }}"
-
           if [ -n "$CALLBACK_URL" ]; then
             curl -s -X POST "$CALLBACK_URL" \
               -H "Content-Type: application/json" \
