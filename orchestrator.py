@@ -48,7 +48,9 @@ print(f"  Features: push={ENABLE_PUSH}, offline={ENABLE_OFFLINE}, admob={ENABLE_
 
 
 def write_file(path, content):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
+    directory = os.path.dirname(path)
+    if directory:
+        os.makedirs(directory, exist_ok=True)
     with open(path, "w") as f:
         f.write(content)
     print(f"  ✓ {path}")
