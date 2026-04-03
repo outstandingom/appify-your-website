@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Offline</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; background: #f8f9fa; color: #1a1a2e;
+      text-align: center; padding: 24px;
+    }
+    .icon { font-size: 64px; margin-bottom: 24px; }
+    h1 { font-size: 22px; margin-bottom: 8px; font-weight: 700; }
+    p { color: #6c757d; font-size: 15px; line-height: 1.5; max-width: 300px; margin: 0 auto 24px; }
+    button {
+      padding: 14px 32px; background: #10B981; color: white;
+      border: none; border-radius: 12px; font-size: 16px; font-weight: 600;
+      cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    button:active { transform: scale(0.97); }
+  </style>
+</head>
+<body>
+  <div>
+    <div class="icon">📡</div>
+    <h1>No Internet Connection</h1>
+    <p>You are offline. Please check your connection.</p>
+    <button onclick="location.reload()">Try Again</button>
+  </div>
+</body>
+</html>
