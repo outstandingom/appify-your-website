@@ -3,11 +3,11 @@ plugins {
 }
 
 android {
-    namespace 'com.webtoapk.testapp'
+    namespace 'com.app.appconverter'
     compileSdk 34
 
     defaultConfig {
-        applicationId "com.webtoapk.testapp"
+        applicationId "com.app.appconverter"
         minSdk 24
         targetSdk 34
         versionCode 1
