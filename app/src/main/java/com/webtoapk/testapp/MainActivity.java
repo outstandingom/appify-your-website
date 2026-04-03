@@ -308,7 +308,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void loadOfflinePage() {
-        boolean offlineEnabled = true;
+        boolean offlineEnabled = false;
         if (offlineEnabled) {
             webView.loadUrl("file:///android_asset/offline.html");
         } else {
