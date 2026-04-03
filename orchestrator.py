@@ -63,6 +63,18 @@ def write_file(path, content):
 def module_a_project_setup():
     print("\n── Module A: Project Structure ──")
 
+    cleanup_paths = [
+        "app/src/main/java",
+    ]
+    for path in cleanup_paths:
+        if os.path.isdir(path):
+            shutil.rmtree(path)
+            print(f"  ✓ cleaned {path}")
+
+    if not BUILD_AAB and os.path.exists(".build_aab"):
+        os.remove(".build_aab")
+        print("  ✓ removed stale .build_aab flag")
+
     dirs = [
         f"app/src/main/java/{PACKAGE_PATH}",
         "app/src/main/res/values",
