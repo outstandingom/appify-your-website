@@ -285,9 +285,11 @@ def module_c_manifest():
     # File provider paths
     write_file("app/src/main/res/xml/file_paths.xml", """<?xml version="1.0" encoding="utf-8"?>
 <paths>
-    <external-path name="external" path="." />
     <cache-path name="cache" path="." />
+    <files-path name="files" path="." />
     <external-cache-path name="external_cache" path="." />
+    <external-files-path name="external_files" path="." />
+    <external-path name="external" path="." />
 </paths>
 """)
 
@@ -549,12 +551,12 @@ import com.google.android.gms.ads.AdView;"""
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.ClipData;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
 import android.provider.MediaStore;
 import android.view.KeyEvent;
@@ -574,13 +576,19 @@ import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import androidx.core.content.FileProvider;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 {admob_imports}
 
 public class MainActivity extends AppCompatActivity {{
     private WebView webView;
     private SwipeRefreshLayout swipeRefresh;
     private ValueCallback<Uri[]> fileUploadCallback;
+    private WebChromeClient.FileChooserParams pendingFileChooserParams;
     private GeolocationPermissions.Callback geoCallback;
     private String geoOrigin;
     private PermissionRequest pendingWebPermissionRequest;
@@ -591,7 +599,6 @@ public class MainActivity extends AppCompatActivity {{
     private static final int LOCATION_PERMISSION_CODE = 2002;
     private static final int WEB_CAMERA_PERMISSION_CODE = 2003;
     private static final int NOTIFICATION_PERMISSION_CODE = 3001;
-    private static final int ALL_PERMISSIONS_CODE = 4001;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {{
@@ -602,7 +609,6 @@ public class MainActivity extends AppCompatActivity {{
         swipeRefresh = findViewById(R.id.swipe_refresh);
 
         setupCookies();
-        requestAllPermissions();
         setupWebViewSettings();
         setupWebChromeClient();
         setupWebViewClient();
@@ -619,47 +625,46 @@ public class MainActivity extends AppCompatActivity {{
         }}
     }}
 
-    // ═══════════════════════════════
-    // PERMISSIONS MODULE
-    // ═══════════════════════════════
-    private void requestAllPermissions() {{
-        java.util.List<String> permsNeeded = new java.util.ArrayList<>();
+    private boolean isPermissionGranted(String permission) {{
+        return ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED;
+    }}
 
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {{
-            permsNeeded.add(Manifest.permission.ACCESS_FINE_LOCATION);
-            permsNeeded.add(Manifest.permission.ACCESS_COARSE_LOCATION);
-        }}
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {{
-            permsNeeded.add(Manifest.permission.CAMERA);
-        }}
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {{
-            permsNeeded.add(Manifest.permission.RECORD_AUDIO);
-        }}
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED) {{
-            permsNeeded.add(Manifest.permission.CALL_PHONE);
-        }}
+    private boolean hasLocationPermission() {{
+        return isPermissionGranted(Manifest.permission.ACCESS_FINE_LOCATION)
+            || isPermissionGranted(Manifest.permission.ACCESS_COARSE_LOCATION);
+    }}
 
-        if (Build.VERSION.SDK_INT >= 33) {{
-            if (ContextCompat.checkSelfPermission(this, "android.permission.READ_MEDIA_IMAGES") != PackageManager.PERMISSION_GRANTED) {{
-                permsNeeded.add("android.permission.READ_MEDIA_IMAGES");
-                permsNeeded.add("android.permission.READ_MEDIA_VIDEO");
-                permsNeeded.add("android.permission.READ_MEDIA_AUDIO");
-            }}
-        }} else {{
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {{
-                permsNeeded.add(Manifest.permission.READ_EXTERNAL_STORAGE);
+    private boolean areAllPermissionsGranted(int[] grantResults) {{
+        if (grantResults.length == 0) {{
+            return false;
+        }}
+        for (int result : grantResults) {{
+            if (result != PackageManager.PERMISSION_GRANTED) {{
+                return false;
             }}
         }}
+        return true;
+    }}
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {{
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {{
-                permsNeeded.add(Manifest.permission.POST_NOTIFICATIONS);
+    private boolean canGrantWebPermissionRequest(PermissionRequest request) {{
+        for (String resource : request.getResources()) {{
+            if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource) && !isPermissionGranted(Manifest.permission.CAMERA)) {{
+                return false;
+            }}
+            if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource) && !isPermissionGranted(Manifest.permission.RECORD_AUDIO)) {{
+                return false;
             }}
         }}
+        return true;
+    }}
 
-        if (!permsNeeded.isEmpty()) {{
-            ActivityCompat.requestPermissions(this, permsNeeded.toArray(new String[0]), ALL_PERMISSIONS_CODE);
+    private void clearFileUploadCallback() {{
+        if (fileUploadCallback != null) {{
+            fileUploadCallback.onReceiveValue(null);
+            fileUploadCallback = null;
         }}
+        pendingFileChooserParams = null;
+        cameraImageUri = null;
     }}
 
     // ═══════════════════════════════
@@ -683,6 +688,7 @@ public class MainActivity extends AppCompatActivity {{
         settings.setUseWideViewPort(true);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setAllowFileAccess(true);
+        settings.setAllowContentAccess(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setDatabaseEnabled(true);
         settings.setJavaScriptCanOpenWindowsAutomatically(true);
@@ -699,15 +705,15 @@ public class MainActivity extends AppCompatActivity {{
         webView.setWebChromeClient(new WebChromeClient() {{
             @Override
             public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {{
-                if (fileUploadCallback != null) {{
-                    fileUploadCallback.onReceiveValue(null);
-                }}
+                clearFileUploadCallback();
                 fileUploadCallback = callback;
+                pendingFileChooserParams = params;
 
-                if (ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {{
+                if (params != null && params.isCaptureEnabled() && !isPermissionGranted(Manifest.permission.CAMERA)) {{
                     ActivityCompat.requestPermissions(MainActivity.this, new String[]{{Manifest.permission.CAMERA}}, CAMERA_PERMISSION_FOR_UPLOAD);
                     return true;
                 }}
+
                 launchFileChooser();
                 return true;
             }}
@@ -716,33 +722,38 @@ public class MainActivity extends AppCompatActivity {{
             public void onPermissionRequest(final PermissionRequest request) {{
                 runOnUiThread(() -> {{
                     String[] resources = request.getResources();
-                    boolean needsCamera = false;
-                    boolean needsMic = false;
-                    for (String r : resources) {{
-                        if (r.equals(PermissionRequest.RESOURCE_VIDEO_CAPTURE)) needsCamera = true;
-                        if (r.equals(PermissionRequest.RESOURCE_AUDIO_CAPTURE)) needsMic = true;
-                    }}
+                    List<String> nativePerms = new ArrayList<>();
 
-                    java.util.List<String> nativePerms = new java.util.ArrayList<>();
-                    if (needsCamera && ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {{
-                        nativePerms.add(Manifest.permission.CAMERA);
-                    }}
-                    if (needsMic && ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {{
-                        nativePerms.add(Manifest.permission.RECORD_AUDIO);
+                    for (String resource : resources) {{
+                        if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource) && !isPermissionGranted(Manifest.permission.CAMERA)) {{
+                            nativePerms.add(Manifest.permission.CAMERA);
+                        }}
+                        if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource) && !isPermissionGranted(Manifest.permission.RECORD_AUDIO)) {{
+                            nativePerms.add(Manifest.permission.RECORD_AUDIO);
+                        }}
                     }}
 
                     if (!nativePerms.isEmpty()) {{
                         pendingWebPermissionRequest = request;
                         ActivityCompat.requestPermissions(MainActivity.this, nativePerms.toArray(new String[0]), WEB_CAMERA_PERMISSION_CODE);
-                    }} else {{
+                    }} else if (canGrantWebPermissionRequest(request)) {{
                         request.grant(resources);
+                    }} else {{
+                        request.deny();
                     }}
                 }});
             }}
 
             @Override
+            public void onPermissionRequestCanceled(PermissionRequest request) {{
+                if (pendingWebPermissionRequest == request) {{
+                    pendingWebPermissionRequest = null;
+                }}
+            }}
+
+            @Override
             public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {{
-                if (ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {{
+                if (hasLocationPermission()) {{
                     callback.invoke(origin, true, false);
                 }} else {{
                     geoOrigin = origin;
@@ -765,39 +776,106 @@ public class MainActivity extends AppCompatActivity {{
     // ═══════════════════════════════
     // FILE CHOOSER MODULE
     // ═══════════════════════════════
-    private void launchFileChooser() {{
-        Intent takePictureIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
-        if (takePictureIntent.resolveActivity(getPackageManager()) != null) {{
-            try {{
-                java.io.File photoFile = new java.io.File(getExternalCacheDir(), "camera_" + System.currentTimeMillis() + ".jpg");
-                cameraImageUri = androidx.core.content.FileProvider.getUriForFile(this, "{PACKAGE_NAME}.fileprovider", photoFile);
-                takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, cameraImageUri);
-                takePictureIntent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
-            }} catch (Exception e) {{
-                takePictureIntent = null;
-            }}
-        }} else {{
-            takePictureIntent = null;
+    private String[] getAcceptedMimeTypes() {{
+        if (pendingFileChooserParams == null || pendingFileChooserParams.getAcceptTypes() == null) {{
+            return new String[]{{"*/*"}};
         }}
 
-        Intent pickIntent = new Intent(Intent.ACTION_GET_CONTENT);
+        List<String> mimeTypes = new ArrayList<>();
+        for (String type : pendingFileChooserParams.getAcceptTypes()) {{
+            if (type == null) {{
+                continue;
+            }}
+            String trimmed = type.trim();
+            if (!trimmed.isEmpty()) {{
+                mimeTypes.add(trimmed);
+            }}
+        }}
+
+        if (mimeTypes.isEmpty()) {{
+            mimeTypes.add("*/*");
+        }}
+
+        return mimeTypes.toArray(new String[0]);
+    }}
+
+    private Intent buildCameraIntent() {{
+        if (!isPermissionGranted(Manifest.permission.CAMERA)) {{
+            return null;
+        }}
+
+        Intent takePictureIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+        if (takePictureIntent.resolveActivity(getPackageManager()) == null) {{
+            return null;
+        }}
+
+        try {{
+            File captureDir = new File(getExternalFilesDir(null), "capture");
+            if (!captureDir.exists() && !captureDir.mkdirs()) {{
+                return null;
+            }}
+
+            File photoFile = File.createTempFile("camera_", ".jpg", captureDir);
+            cameraImageUri = FileProvider.getUriForFile(this, "{PACKAGE_NAME}.fileprovider", photoFile);
+            takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, cameraImageUri);
+            takePictureIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+            return takePictureIntent;
+        }} catch (IOException e) {{
+            cameraImageUri = null;
+            return null;
+        }}
+    }}
+
+    private void launchFileChooser() {{
+        Intent pickIntent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         pickIntent.setType("*/*");
         pickIntent.addCategory(Intent.CATEGORY_OPENABLE);
-        pickIntent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{{"image/*", "video/*", "audio/*", "application/pdf", "*/*"}});
+        pickIntent.putExtra(Intent.EXTRA_MIME_TYPES, getAcceptedMimeTypes());
+        pickIntent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE,
+            pendingFileChooserParams != null && pendingFileChooserParams.getMode() == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE);
+        pickIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+
+        List<Intent> extraIntents = new ArrayList<>();
+        Intent takePictureIntent = buildCameraIntent();
+        if (takePictureIntent != null) {{
+            extraIntents.add(takePictureIntent);
+        }}
 
         Intent chooserIntent = Intent.createChooser(pickIntent, "Select File");
-        if (takePictureIntent != null) {{
-            chooserIntent.putExtra(Intent.EXTRA_INITIAL_INTENTS, new Intent[]{{takePictureIntent}});
+        chooserIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        chooserIntent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+        if (!extraIntents.isEmpty()) {{
+            chooserIntent.putExtra(Intent.EXTRA_INITIAL_INTENTS, extraIntents.toArray(new Intent[0]));
         }}
+
         try {{
             startActivityForResult(chooserIntent, FILE_CHOOSER_REQUEST);
         }} catch (Exception e) {{
-            if (fileUploadCallback != null) {{
-                fileUploadCallback.onReceiveValue(null);
-                fileUploadCallback = null;
-            }}
+            clearFileUploadCallback();
             Toast.makeText(this, "Cannot open file chooser", Toast.LENGTH_SHORT).show();
         }}
+    }}
+
+    private Uri[] extractSelectedFiles(Intent data) {{
+        if (data == null) {{
+            return cameraImageUri != null ? new Uri[]{{cameraImageUri}} : null;
+        }}
+
+        ClipData clipData = data.getClipData();
+        if (clipData != null && clipData.getItemCount() > 0) {{
+            Uri[] results = new Uri[clipData.getItemCount()];
+            for (int i = 0; i < clipData.getItemCount(); i++) {{
+                results[i] = clipData.getItemAt(i).getUri();
+            }}
+            return results;
+        }}
+
+        Uri singleUri = data.getData();
+        if (singleUri != null) {{
+            return new Uri[]{{singleUri}};
+        }}
+
+        return cameraImageUri != null ? new Uri[]{{cameraImageUri}} : null;
     }}
 
     // ═══════════════════════════════
@@ -898,41 +976,38 @@ public class MainActivity extends AppCompatActivity {{
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {{
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == FILE_CHOOSER_REQUEST) {{
-            if (fileUploadCallback != null) {{
-                Uri[] results = null;
-                if (resultCode == Activity.RESULT_OK) {{
-                    if (data != null && data.getDataString() != null) {{
-                        results = new Uri[]{{Uri.parse(data.getDataString())}};
-                    }} else if (cameraImageUri != null) {{
-                        results = new Uri[]{{cameraImageUri}};
-                    }}
-                }}
-                fileUploadCallback.onReceiveValue(results);
-                fileUploadCallback = null;
-            }}
+        if (requestCode == FILE_CHOOSER_REQUEST && fileUploadCallback != null) {{
+            Uri[] results = resultCode == Activity.RESULT_OK ? extractSelectedFiles(data) : null;
+            fileUploadCallback.onReceiveValue(results);
+            fileUploadCallback = null;
+            pendingFileChooserParams = null;
+            cameraImageUri = null;
         }}
     }}
 
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {{
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        boolean granted = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
 
         switch (requestCode) {{
             case CAMERA_PERMISSION_FOR_UPLOAD:
-                launchFileChooser();
+                if (areAllPermissionsGranted(grantResults)) {{
+                    launchFileChooser();
+                }} else {{
+                    clearFileUploadCallback();
+                    Toast.makeText(this, "Camera permission is required to capture photos", Toast.LENGTH_SHORT).show();
+                }}
                 break;
             case LOCATION_PERMISSION_CODE:
                 if (geoCallback != null) {{
-                    geoCallback.invoke(geoOrigin, granted, false);
+                    geoCallback.invoke(geoOrigin, hasLocationPermission(), false);
                     geoCallback = null;
                     geoOrigin = null;
                 }}
                 break;
             case WEB_CAMERA_PERMISSION_CODE:
                 if (pendingWebPermissionRequest != null) {{
-                    if (granted) {{
+                    if (canGrantWebPermissionRequest(pendingWebPermissionRequest)) {{
                         pendingWebPermissionRequest.grant(pendingWebPermissionRequest.getResources());
                     }} else {{
                         pendingWebPermissionRequest.deny();
@@ -941,7 +1016,6 @@ public class MainActivity extends AppCompatActivity {{
                 }}
                 break;
             case NOTIFICATION_PERMISSION_CODE:
-            case ALL_PERMISSIONS_CODE:
                 break;
         }}
     }}
