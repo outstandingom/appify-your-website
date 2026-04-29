@@ -194,6 +194,7 @@ const FeatureToggles = ({ config, onChange }: Props) => {
               onToggle={(v) => onChange({ buildAab: v })}
             />
           )}
+        </div>
       </div>
     </div>
   );
