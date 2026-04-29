@@ -29,8 +29,10 @@ Deno.serve(async (req) => {
       enable_push, enable_offline, offline_message,
       enable_analytics, enable_cookies,
       enable_admob, admob_banner_id, admob_interstitial_id,
-      build_aab, tier,
+      build_aab, tier, platform,
     } = body;
+
+    const targetPlatform = platform === "ios" ? "ios" : "android";
 
     if (!website_url || !app_name) {
       return new Response(
