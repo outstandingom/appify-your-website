@@ -117,7 +117,7 @@ Deno.serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        event_type: "build-apk",
+        event_type: targetPlatform === "ios" ? "build-ipa" : "build-apk",
         client_payload: {
           build_id: build.id,
           callback_url: callbackUrl,
@@ -137,6 +137,7 @@ Deno.serve(async (req) => {
             admob_banner_id: admob_banner_id || null,
             admob_interstitial_id: admob_interstitial_id || null,
             build_aab: build_aab || false,
+            platform: targetPlatform,
           }),
         },
       }),
