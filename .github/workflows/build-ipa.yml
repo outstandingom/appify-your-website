@@ -27,7 +27,7 @@ jobs:
       - name: Generate iOS Xcode project
         run: python3 ios_orchestrator.py
 
-      - name: Build unsigned .app
+      - name: Build unsigned .app for real device (arm64)
         run: |
           set -e
           cd ios-app
@@ -36,12 +36,14 @@ jobs:
             -scheme WebApp \
             -configuration Release \
             -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
             -derivedDataPath build \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=NO \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             PROVISIONING_PROFILE="" \
-            ONLY_ACTIVE_ARCH=NO \
             build
 
       - name: Package .app into unsigned .ipa
@@ -53,8 +55,17 @@ jobs:
           if [ -z "$APP_PATH" ]; then
             echo "No .app produced"; exit 1
           fi
+          # Verify it's a real device build (arm64), not simulator (x86_64)
+          BIN_NAME=$(basename "$APP_PATH" .app)
+          file "$APP_PATH/$BIN_NAME" || true
+          rm -rf Payload
           mkdir -p Payload
           cp -R "$APP_PATH" Payload/
+          # Strip simulator/extra slices just in case; keep arm64 only
+          BIN="Payload/$(basename "$APP_PATH")/$BIN_NAME"
+          if [ -f "$BIN" ]; then
+            lipo -info "$BIN" || true
+          fi
           mkdir -p ../ios-output
           zip -qr "../ios-output/WebApp-unsigned.ipa" Payload
           ls -la ../ios-output
