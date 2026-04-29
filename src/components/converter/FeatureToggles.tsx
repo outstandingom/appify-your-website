@@ -185,14 +185,15 @@ const FeatureToggles = ({ config, onChange }: Props) => {
               />
             </div>
           )}
-          <ToggleRow
-            icon={<FileArchive className="w-4 h-4" />}
-            label="Play Store Bundle (AAB)"
-            badge={tierBadge("pro")}
-            checked={config.buildAab}
-            onToggle={(v) => onChange({ buildAab: v })}
-          />
-        </div>
+          {config.platform === "android" && (
+            <ToggleRow
+              icon={<FileArchive className="w-4 h-4" />}
+              label="Play Store Bundle (AAB)"
+              badge={tierBadge("pro")}
+              checked={config.buildAab}
+              onToggle={(v) => onChange({ buildAab: v })}
+            />
+          )}
       </div>
     </div>
   );
