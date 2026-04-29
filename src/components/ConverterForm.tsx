@@ -156,7 +156,7 @@ const ConverterForm = () => {
               <div className="text-center space-y-2">
                 <p className="font-display text-lg font-semibold">Building your {outputLabel}...</p>
                 <p className="text-sm text-muted-foreground">
-                  Wrapping <span className="text-foreground font-medium">{config.appName}</span> for Android
+                  Wrapping <span className="text-foreground font-medium">{config.appName}</span> for {platformLabel}
                 </p>
                 <p className="text-xs text-muted-foreground mt-2">
                   This may take 2–5 minutes. Don't close this page.
