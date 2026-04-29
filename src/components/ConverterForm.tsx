@@ -137,7 +137,7 @@ const ConverterForm = () => {
                 onClick={handleGenerate}
               >
                 <Sparkles className="w-4 h-4" />
-                Generate {config.buildAab ? "AAB" : "APK"}
+                Generate {outputLabel}
                 {cost > 0 && (
                   <span className="text-xs opacity-70 ml-1">({cost} credits)</span>
                 )}
@@ -154,7 +154,7 @@ const ConverterForm = () => {
                 <div className="absolute -inset-3 rounded-3xl border border-primary/20 animate-spin-slow" />
               </div>
               <div className="text-center space-y-2">
-                <p className="font-display text-lg font-semibold">Building your {config.buildAab ? "AAB" : "APK"}...</p>
+                <p className="font-display text-lg font-semibold">Building your {outputLabel}...</p>
                 <p className="text-sm text-muted-foreground">
                   Wrapping <span className="text-foreground font-medium">{config.appName}</span> for Android
                 </p>
@@ -171,7 +171,7 @@ const ConverterForm = () => {
                 <CheckCircle2 className="w-10 h-10 text-primary" />
               </div>
               <div className="text-center space-y-2">
-                <p className="font-display text-lg font-semibold">Your {config.buildAab ? "AAB" : "APK"} is ready!</p>
+                <p className="font-display text-lg font-semibold">Your {outputLabel} is ready!</p>
                 <p className="text-sm text-muted-foreground">
                   <span className="text-foreground font-medium">{config.appName}</span> has been generated
                 </p>
@@ -179,7 +179,7 @@ const ConverterForm = () => {
               <div className="flex flex-col w-full gap-3">
                 <Button variant="hero" size="lg" className="w-full h-13 rounded-xl gap-2" onClick={handleDownload}>
                   <Download className="w-5 h-5" />
-                  Download {config.buildAab ? "AAB" : "APK"}
+                  Download {outputLabel}
                 </Button>
                 <Button variant="ghost" onClick={handleReset} className="text-muted-foreground">
                   Convert another website
