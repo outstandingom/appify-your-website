@@ -1,4 +1,9 @@
+export type Platform = "android" | "ios";
+
 export interface BuildConfig {
+  // Platform
+  platform: Platform;
+
   // Core
   websiteUrl: string;
   appName: string;
@@ -29,6 +34,7 @@ export type Step = "config" | "generating" | "done" | "error";
 export type Tier = "free" | "premium" | "pro";
 
 export const DEFAULT_CONFIG: BuildConfig = {
+  platform: "android",
   websiteUrl: "",
   appName: "",
   packageName: "",
