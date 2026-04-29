@@ -96,6 +96,7 @@ Deno.serve(async (req) => {
         admob_banner_id: admob_banner_id || null,
         admob_interstitial_id: admob_interstitial_id || null,
         build_aab: build_aab || false,
+        platform: targetPlatform,
         tier: tier || "free",
         status: "pending",
       })
