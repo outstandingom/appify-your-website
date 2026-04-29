@@ -72,6 +72,7 @@ const ConverterForm = () => {
           admob_banner_id: config.admobBannerId || null,
           admob_interstitial_id: config.admobInterstitialId || null,
           build_aab: config.buildAab,
+          platform: config.platform,
           tier,
         },
       });
