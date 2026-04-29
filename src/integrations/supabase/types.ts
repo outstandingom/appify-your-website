@@ -34,6 +34,7 @@ export type Database = {
           id: string
           offline_message: string | null
           package_name: string | null
+          platform: string
           splash_color: string | null
           status: Database["public"]["Enums"]["build_status"]
           status_bar_color: string | null
@@ -60,6 +61,7 @@ export type Database = {
           id?: string
           offline_message?: string | null
           package_name?: string | null
+          platform?: string
           splash_color?: string | null
           status?: Database["public"]["Enums"]["build_status"]
           status_bar_color?: string | null
@@ -86,6 +88,7 @@ export type Database = {
           id?: string
           offline_message?: string | null
           package_name?: string | null
+          platform?: string
           splash_color?: string | null
           status?: Database["public"]["Enums"]["build_status"]
           status_bar_color?: string | null
