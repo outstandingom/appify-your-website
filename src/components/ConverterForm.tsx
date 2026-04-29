@@ -104,6 +104,8 @@ const ConverterForm = () => {
 
   const tier = getTier(config);
   const cost = getCreditCost(tier);
+  const outputLabel = config.platform === "ios" ? "IPA" : config.buildAab ? "AAB" : "APK";
+  const platformLabel = config.platform === "ios" ? "iOS" : "Android";
 
   return (
     <div className="w-full max-w-lg mx-auto">
