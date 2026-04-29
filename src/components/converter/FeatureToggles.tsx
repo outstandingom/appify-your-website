@@ -4,7 +4,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
   Bell, WifiOff, Palette, BarChart3, Cookie,
-  DollarSign, FileArchive
+  DollarSign, FileArchive, Smartphone, Apple
 } from "lucide-react";
 import type { BuildConfig, Tier } from "./types";
 import { getTier, getCreditCost } from "./types";
@@ -26,6 +26,40 @@ const FeatureToggles = ({ config, onChange }: Props) => {
 
   return (
     <div className="space-y-4">
+      {/* Platform selector */}
+      <div className="space-y-2">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Target Platform</p>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => onChange({ platform: "android", buildAab: config.platform === "ios" ? false : config.buildAab })}
+            className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors ${
+              config.platform === "android"
+                ? "border-primary bg-primary/10 text-primary"
+                : "border-border bg-surface-sunken text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Smartphone className="w-4 h-4" /> Android
+          </button>
+          <button
+            type="button"
+            onClick={() => onChange({ platform: "ios", buildAab: false })}
+            className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors ${
+              config.platform === "ios"
+                ? "border-primary bg-primary/10 text-primary"
+                : "border-border bg-surface-sunken text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Apple className="w-4 h-4" /> iOS
+          </button>
+        </div>
+        {config.platform === "ios" && (
+          <p className="text-[11px] text-muted-foreground leading-relaxed px-1">
+            iOS builds produce an <span className="font-medium text-foreground">unsigned .ipa</span> (works in simulators, not directly installable on real iPhones without signing).
+          </p>
+        )}
+      </div>
+
       {/* Tier indicator */}
       <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-surface-sunken">
         <span className="text-xs font-medium text-muted-foreground">Build tier</span>
