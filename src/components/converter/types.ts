@@ -1,4 +1,9 @@
+export type Platform = "android" | "ios";
+
 export interface BuildConfig {
+  // Platform
+  platform: Platform;
+
   // Core
   websiteUrl: string;
   appName: string;
@@ -29,6 +34,7 @@ export type Step = "config" | "generating" | "done" | "error";
 export type Tier = "free" | "premium" | "pro";
 
 export const DEFAULT_CONFIG: BuildConfig = {
+  platform: "android",
   websiteUrl: "",
   appName: "",
   packageName: "",
@@ -49,7 +55,13 @@ export const DEFAULT_CONFIG: BuildConfig = {
 
 export function getTier(config: BuildConfig): Tier {
   if (config.enableAdmob || config.buildAab) return "pro";
-  if (config.enablePush || config.enableOffline || config.enableAnalytics || config.statusBarColor !== "#000000") return "premium";
+  if (
+    config.platform === "ios" ||
+    config.enablePush ||
+    config.enableOffline ||
+    config.enableAnalytics ||
+    config.statusBarColor !== "#000000"
+  ) return "premium";
   return "free";
 }
 

@@ -29,8 +29,10 @@ Deno.serve(async (req) => {
       enable_push, enable_offline, offline_message,
       enable_analytics, enable_cookies,
       enable_admob, admob_banner_id, admob_interstitial_id,
-      build_aab, tier,
+      build_aab, tier, platform,
     } = body;
+
+    const targetPlatform = platform === "ios" ? "ios" : "android";
 
     if (!website_url || !app_name) {
       return new Response(
@@ -94,6 +96,7 @@ Deno.serve(async (req) => {
         admob_banner_id: admob_banner_id || null,
         admob_interstitial_id: admob_interstitial_id || null,
         build_aab: build_aab || false,
+        platform: targetPlatform,
         tier: tier || "free",
         status: "pending",
       })
@@ -114,7 +117,7 @@ Deno.serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        event_type: "build-apk",
+        event_type: targetPlatform === "ios" ? "build-ipa" : "build-apk",
         client_payload: {
           build_id: build.id,
           callback_url: callbackUrl,
@@ -134,6 +137,7 @@ Deno.serve(async (req) => {
             admob_banner_id: admob_banner_id || null,
             admob_interstitial_id: admob_interstitial_id || null,
             build_aab: build_aab || false,
+            platform: targetPlatform,
           }),
         },
       }),
