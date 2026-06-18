@@ -640,6 +640,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 {admob_imports}
+{proxy_imports}
 
 public class MainActivity extends AppCompatActivity {{
     private WebView webView;
@@ -674,6 +675,7 @@ public class MainActivity extends AppCompatActivity {{
         swipeRefresh.setOnRefreshListener(() -> webView.reload());
 
         setupAdMob();
+{proxy_setup_call}
 
         if (isOnline()) {{
             webView.loadUrl("{WEBSITE_URL}");
