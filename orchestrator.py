@@ -553,9 +553,55 @@ import com.google.android.gms.ads.AdView;"""
         if (adView != null) {
             AdRequest adRequest = new AdRequest.Builder().build();
             adView.loadAd(adRequest);
-        }"""
+                }"""
 
     enable_offline_java = "true" if ENABLE_OFFLINE else "false"
+
+    # ── Proxy (custom IP) injection ──
+    proxy_imports = ""
+    proxy_setup_call = ""
+    proxy_method = "    private void setupProxy() { /* disabled */ }"
+    proxy_auth_handler = ""
+    if PROXY_ACTIVE:
+        proxy_imports = """import androidx.webkit.ProxyConfig;
+import androidx.webkit.ProxyController;
+import androidx.webkit.WebViewFeature;
+import java.util.concurrent.Executors;
+import android.webkit.HttpAuthHandler;"""
+        proxy_setup_call = "        setupProxy();"
+        proxy_host_j = _java_str(PROXY_HOST)
+        proxy_user_j = _java_str(PROXY_USER)
+        proxy_pass_j = _java_str(PROXY_PASS)
+        proxy_scheme = "https" if PROXY_TYPE == "https" else "http"
+        # Android WebView ProxyController only supports HTTP/HTTPS proxies.
+        # For SOCKS5 we still register the host as HTTP so user is alerted via build
+        # log; recommend HTTP/HTTPS proxy on the UI.
+        proxy_method = f"""    private void setupProxy() {{
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) {{
+            android.util.Log.w("Proxy", "WebView proxy override unsupported on this device");
+            return;
+        }}
+        try {{
+            ProxyConfig proxyConfig = new ProxyConfig.Builder()
+                .addProxyRule("{proxy_scheme}://{proxy_host_j}:{PROXY_PORT}")
+                .addDirect()
+                .build();
+            ProxyController.getInstance().setProxyOverride(
+                proxyConfig,
+                Executors.newSingleThreadExecutor(),
+                () -> android.util.Log.i("Proxy", "Proxy active: {proxy_host_j}:{PROXY_PORT}")
+            );
+        }} catch (Exception e) {{
+            android.util.Log.e("Proxy", "Failed to set proxy", e);
+        }}
+    }}"""
+        if PROXY_USER or PROXY_PASS:
+            proxy_auth_handler = f"""
+            @Override
+            public void onReceivedHttpAuthRequest(WebView view, HttpAuthHandler handler, String host, String realm) {{
+                handler.proceed("{proxy_user_j}", "{proxy_pass_j}");
+            }}
+"""
 
     write_file(f"app/src/main/java/{PACKAGE_PATH}/MainActivity.java", f"""package {PACKAGE_NAME};
 
