@@ -21,6 +21,17 @@ SPLASH_COLOR = config.get("splash_color", "#10B981")
 STATUS_BAR_COLOR = config.get("status_bar_color", "#000000")
 OFFLINE_MSG = config.get("offline_message", "You are offline. Please check your connection.")
 
+# Proxy / custom IP
+PROXY_ENABLED = bool(config.get("proxy_enabled", False))
+PROXY_TYPE = (config.get("proxy_type") or "http").lower()
+PROXY_HOST = (config.get("proxy_host") or "").strip()
+PROXY_PORT = config.get("proxy_port")
+PROXY_USER = config.get("proxy_username") or ""
+PROXY_PASS = config.get("proxy_password") or ""
+PROXY_ACTIVE = PROXY_ENABLED and PROXY_HOST and PROXY_PORT
+def _swift_str(s):
+    return (s or "").replace("\\", "\\\\").replace("\"", "\\\"")
+
 custom_pkg = config.get("package_name", "")
 if custom_pkg:
     BUNDLE_ID = custom_pkg
