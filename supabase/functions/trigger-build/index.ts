@@ -30,6 +30,8 @@ Deno.serve(async (req) => {
       enable_analytics, enable_cookies,
       enable_admob, admob_banner_id, admob_interstitial_id,
       build_aab, tier, platform,
+      proxy_enabled, proxy_type, proxy_host, proxy_port,
+      proxy_username, proxy_password,
     } = body;
 
     const targetPlatform = platform === "ios" ? "ios" : "android";
@@ -99,6 +101,12 @@ Deno.serve(async (req) => {
         platform: targetPlatform,
         tier: tier || "free",
         status: "pending",
+        proxy_enabled: !!proxy_enabled,
+        proxy_type: proxy_enabled ? (proxy_type || "http") : null,
+        proxy_host: proxy_enabled ? (proxy_host || null) : null,
+        proxy_port: proxy_enabled && proxy_port ? Number(proxy_port) : null,
+        proxy_username: proxy_enabled ? (proxy_username || null) : null,
+        proxy_password: proxy_enabled ? (proxy_password || null) : null,
       })
       .select()
       .single();
@@ -138,6 +146,12 @@ Deno.serve(async (req) => {
             admob_interstitial_id: admob_interstitial_id || null,
             build_aab: build_aab || false,
             platform: targetPlatform,
+            proxy_enabled: !!proxy_enabled,
+            proxy_type: proxy_enabled ? (proxy_type || "http") : null,
+            proxy_host: proxy_enabled ? (proxy_host || null) : null,
+            proxy_port: proxy_enabled && proxy_port ? Number(proxy_port) : null,
+            proxy_username: proxy_enabled ? (proxy_username || null) : null,
+            proxy_password: proxy_enabled ? (proxy_password || null) : null,
           }),
         },
       }),
