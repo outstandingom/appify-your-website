@@ -1,4 +1,5 @@
 export type Platform = "android" | "ios";
+export type ProxyType = "http" | "socks5";
 
 export interface BuildConfig {
   // Platform
@@ -27,6 +28,14 @@ export interface BuildConfig {
   admobBannerId: string;
   admobInterstitialId: string;
   buildAab: boolean;
+
+  // Pro – Proxy / Custom IP
+  proxyEnabled: boolean;
+  proxyType: ProxyType;
+  proxyHost: string;
+  proxyPort: string;
+  proxyUsername: string;
+  proxyPassword: string;
 }
 
 export type Step = "config" | "generating" | "done" | "error";
@@ -51,10 +60,16 @@ export const DEFAULT_CONFIG: BuildConfig = {
   admobBannerId: "",
   admobInterstitialId: "",
   buildAab: false,
+  proxyEnabled: false,
+  proxyType: "http",
+  proxyHost: "",
+  proxyPort: "",
+  proxyUsername: "",
+  proxyPassword: "",
 };
 
 export function getTier(config: BuildConfig): Tier {
-  if (config.enableAdmob || config.buildAab) return "pro";
+  if (config.enableAdmob || config.buildAab || config.proxyEnabled) return "pro";
   if (
     config.platform === "ios" ||
     config.enablePush ||
