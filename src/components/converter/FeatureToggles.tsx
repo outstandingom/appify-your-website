@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import type { BuildConfig, Tier } from "./types";
 import { getTier, getCreditCost } from "./types";
+import ProxySettings from "./ProxySettings";
 
 interface Props {
   config: BuildConfig;
@@ -194,6 +195,7 @@ const FeatureToggles = ({ config, onChange }: Props) => {
               onToggle={(v) => onChange({ buildAab: v })}
             />
           )}
+          <ProxySettings config={config} onChange={onChange} />
         </div>
       </div>
     </div>

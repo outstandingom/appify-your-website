@@ -73,6 +73,12 @@ const ConverterForm = () => {
           admob_interstitial_id: config.admobInterstitialId || null,
           build_aab: config.buildAab,
           platform: config.platform,
+          proxy_enabled: config.proxyEnabled,
+          proxy_type: config.proxyType,
+          proxy_host: config.proxyHost.trim(),
+          proxy_port: config.proxyPort ? parseInt(config.proxyPort, 10) : null,
+          proxy_username: config.proxyUsername,
+          proxy_password: config.proxyPassword,
           tier,
         },
       });
