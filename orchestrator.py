@@ -32,6 +32,17 @@ ADMOB_BANNER = config.get("admob_banner_id", "")
 ADMOB_INTERSTITIAL = config.get("admob_interstitial_id", "")
 BUILD_AAB = config.get("build_aab", False)
 
+# Proxy / custom IP (Pro)
+PROXY_ENABLED = bool(config.get("proxy_enabled", False))
+PROXY_TYPE = (config.get("proxy_type") or "http").lower()
+PROXY_HOST = (config.get("proxy_host") or "").strip()
+PROXY_PORT = config.get("proxy_port")
+PROXY_USER = config.get("proxy_username") or ""
+PROXY_PASS = config.get("proxy_password") or ""
+PROXY_ACTIVE = PROXY_ENABLED and PROXY_HOST and PROXY_PORT
+def _java_str(s):
+    return (s or "").replace("\\", "\\\\").replace("\"", "\\\"")
+
 # Package name
 custom_pkg = config.get("package_name", "")
 if custom_pkg:
