@@ -124,6 +124,8 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {{
         let prefs = WKPreferences()
         prefs.javaScriptCanOpenWindowsAutomatically = true
         config.preferences = prefs
+{PROXY_BLOCK}
+
 
         webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = self
