@@ -76,8 +76,42 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 }
 """
 
+# ── iOS 17+ proxy block ──
+if PROXY_ACTIVE:
+    _phost = _swift_str(PROXY_HOST)
+    _puser = _swift_str(PROXY_USER)
+    _ppass = _swift_str(PROXY_PASS)
+    _proxy_init = (
+        f'ProxyConfiguration(socksv5Proxy: endpoint)'
+        if PROXY_TYPE == "socks5"
+        else f'ProxyConfiguration(httpCONNECTProxy: endpoint, tlsOptions: nil)'
+    )
+    _auth_line = ""
+    if PROXY_USER or PROXY_PASS:
+        _auth_line = f'proxyConfig.applyCredential(username: "{_puser}", password: "{_ppass}")'
+    PROXY_BLOCK = f"""
+        if #available(iOS 17.0, *) {{
+            let endpoint = NWEndpoint.hostPort(
+                host: NWEndpoint.Host("{_phost}"),
+                port: NWEndpoint.Port(rawValue: {int(PROXY_PORT)})!
+            )
+            var proxyConfig = {_proxy_init}
+            {_auth_line}
+            let dataStore = WKWebsiteDataStore.default()
+            dataStore.proxyConfigurations = [proxyConfig]
+            config.websiteDataStore = dataStore
+        }} else {{
+            NSLog("Proxy requires iOS 17+; ignoring configured proxy.")
+        }}
+"""
+    PROXY_IMPORT = "import Network"
+else:
+    PROXY_BLOCK = ""
+    PROXY_IMPORT = ""
+
 VIEW_CONTROLLER = f"""import UIKit
 import WebKit
+{PROXY_IMPORT}
 
 class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {{
     var webView: WKWebView!
