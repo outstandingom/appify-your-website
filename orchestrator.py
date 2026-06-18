@@ -987,6 +987,7 @@ public class MainActivity extends AppCompatActivity {{
                     loadOfflinePage();
                 }}
             }}
+{proxy_auth_handler}
         }});
     }}
 
@@ -1010,6 +1011,9 @@ public class MainActivity extends AppCompatActivity {{
     private void setupAdMob() {{
 {admob_init}
     }}
+
+{proxy_method}
+
 
     // ═══════════════════════════════
     // NAVIGATION MODULE
