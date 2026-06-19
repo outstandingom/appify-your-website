@@ -35,6 +35,12 @@ export type Database = {
           offline_message: string | null
           package_name: string | null
           platform: string
+          proxy_enabled: boolean
+          proxy_host: string | null
+          proxy_password: string | null
+          proxy_port: number | null
+          proxy_type: string | null
+          proxy_username: string | null
           splash_color: string | null
           status: Database["public"]["Enums"]["build_status"]
           status_bar_color: string | null
@@ -62,6 +68,12 @@ export type Database = {
           offline_message?: string | null
           package_name?: string | null
           platform?: string
+          proxy_enabled?: boolean
+          proxy_host?: string | null
+          proxy_password?: string | null
+          proxy_port?: number | null
+          proxy_type?: string | null
+          proxy_username?: string | null
           splash_color?: string | null
           status?: Database["public"]["Enums"]["build_status"]
           status_bar_color?: string | null
@@ -89,6 +101,12 @@ export type Database = {
           offline_message?: string | null
           package_name?: string | null
           platform?: string
+          proxy_enabled?: boolean
+          proxy_host?: string | null
+          proxy_password?: string | null
+          proxy_port?: number | null
+          proxy_type?: string | null
+          proxy_username?: string | null
           splash_color?: string | null
           status?: Database["public"]["Enums"]["build_status"]
           status_bar_color?: string | null
