@@ -1,3 +1,4 @@
+// v2: stream from Lovable Cloud storage
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
