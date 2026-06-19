@@ -22,27 +22,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    const GITHUB_TOKEN = Deno.env.get("GITHUB_TOKEN");
-    if (!GITHUB_TOKEN) {
-      return new Response(
-        JSON.stringify({ error: "GITHUB_TOKEN not configured" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    const GITHUB_REPO = Deno.env.get("GITHUB_REPO");
-    if (!GITHUB_REPO) {
-      return new Response(
-        JSON.stringify({ error: "GITHUB_REPO not configured" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get build info
     const { data: build, error } = await supabase
       .from("apk_builds")
       .select("*")
@@ -63,54 +46,42 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Find the artifact from GitHub
-    const artifactName = `apk-${buildId}`;
-    const artifactsResp = await fetch(
-      `https://api.github.com/repos/${GITHUB_REPO}/actions/artifacts?name=${artifactName}`,
-      {
-        headers: {
-          Authorization: `Bearer ${GITHUB_TOKEN}`,
-          Accept: "application/vnd.github.v3+json",
-        },
-      }
-    );
-
-    if (!artifactsResp.ok) {
-      const errText = await artifactsResp.text();
-      throw new Error(`GitHub artifacts API error [${artifactsResp.status}]: ${errText}`);
-    }
-
-    const artifactsData = await artifactsResp.json();
-    const artifact = artifactsData.artifacts?.[0];
-
-    if (!artifact) {
+    const artifactPath: string | null = build.artifact_path;
+    if (!artifactPath) {
       return new Response(
-        JSON.stringify({ error: "APK artifact not found on GitHub" }),
+        JSON.stringify({ error: "Artifact not uploaded yet" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Get the download URL
-    const downloadResp = await fetch(artifact.archive_download_url, {
-      headers: {
-        Authorization: `Bearer ${GITHUB_TOKEN}`,
-        Accept: "application/vnd.github.v3+json",
-      },
-      redirect: "follow",
-    });
+    // Download the file from private bucket and stream it back to the user.
+    const { data: file, error: dlErr } = await supabase
+      .storage
+      .from("apk-builds")
+      .download(artifactPath);
 
-    if (!downloadResp.ok) {
-      throw new Error(`Failed to download artifact [${downloadResp.status}]`);
+    if (dlErr || !file) {
+      return new Response(
+        JSON.stringify({ error: `Failed to fetch artifact: ${dlErr?.message || "unknown"}` }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    const apkData = await downloadResp.arrayBuffer();
+    const ext = artifactPath.split(".").pop() || "bin";
+    const contentType =
+      ext === "apk" ? "application/vnd.android.package-archive" :
+      ext === "aab" ? "application/octet-stream" :
+      ext === "ipa" ? "application/octet-stream" :
+      "application/octet-stream";
 
-    return new Response(apkData, {
+    const safeName = String(build.app_name || "app").replace(/[^a-z0-9-_]+/gi, "_");
+
+    return new Response(file.stream(), {
       status: 200,
       headers: {
         ...corsHeaders,
-        "Content-Type": "application/zip",
-        "Content-Disposition": `attachment; filename="${build.app_name}.zip"`,
+        "Content-Type": contentType,
+        "Content-Disposition": `attachment; filename="${safeName}.${ext}"`,
       },
     });
   } catch (error) {

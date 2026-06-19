@@ -10,6 +10,8 @@ jobs:
     env:
       BUILD_ID: ${{ github.event.client_payload.build_id }}
       CALLBACK_URL: ${{ github.event.client_payload.callback_url }}
+      UPLOAD_URL: ${{ github.event.client_payload.upload_url }}
+      ARTIFACT_PATH: ${{ github.event.client_payload.artifact_path }}
       APP_CONFIG: ${{ github.event.client_payload.config }}
 
     steps:
@@ -47,35 +49,30 @@ jobs:
             build
 
       - name: Package .app into unsigned .ipa
+        id: package
         run: |
           set -e
           cd ios-app
           APP_PATH=$(find build/Build/Products/Release-iphoneos -maxdepth 2 -name "*.app" | head -n 1)
-          echo "App path: $APP_PATH"
-          if [ -z "$APP_PATH" ]; then
-            echo "No .app produced"; exit 1
-          fi
-          # Verify it's a real device build (arm64), not simulator (x86_64)
-          BIN_NAME=$(basename "$APP_PATH" .app)
-          file "$APP_PATH/$BIN_NAME" || true
+          if [ -z "$APP_PATH" ]; then echo "No .app produced"; exit 1; fi
           rm -rf Payload
           mkdir -p Payload
           cp -R "$APP_PATH" Payload/
-          # Strip simulator/extra slices just in case; keep arm64 only
-          BIN="Payload/$(basename "$APP_PATH")/$BIN_NAME"
-          if [ -f "$BIN" ]; then
-            lipo -info "$BIN" || true
-          fi
           mkdir -p ../ios-output
           zip -qr "../ios-output/WebApp-unsigned.ipa" Payload
+          echo "artifact_file=ios-output/WebApp-unsigned.ipa" >> "$GITHUB_OUTPUT"
           ls -la ../ios-output
 
-      - name: Upload IPA artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: "apk-${{ github.event.client_payload.build_id }}"
-          path: ios-output/*.ipa
-          retention-days: 7
+      - name: Upload artifact to Lovable Cloud storage
+        run: |
+          set -e
+          FILE="${{ steps.package.outputs.artifact_file }}"
+          echo "Uploading $FILE to $ARTIFACT_PATH"
+          curl --fail-with-body -X PUT \
+            -H "Content-Type: application/octet-stream" \
+            -H "x-upsert: true" \
+            --data-binary "@${FILE}" \
+            "$UPLOAD_URL"
 
       - name: Notify build result
         if: always()
@@ -85,5 +82,5 @@ jobs:
           if [ -n "$CALLBACK_URL" ]; then
             curl -s -X POST "$CALLBACK_URL" \
               -H "Content-Type: application/json" \
-              -d "{\"build_id\": \"$BUILD_ID\", \"status\": \"$STATUS\", \"run_id\": \"$RUN_ID\"}"
+              -d "{\"build_id\": \"$BUILD_ID\", \"status\": \"$STATUS\", \"run_id\": \"$RUN_ID\", \"artifact_path\": \"$ARTIFACT_PATH\"}"
           fi
