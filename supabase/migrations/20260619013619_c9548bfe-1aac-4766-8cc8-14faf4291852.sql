@@ -1,0 +1,1 @@
+ALTER TABLE public.apk_builds ADD COLUMN IF NOT EXISTS artifact_path text;

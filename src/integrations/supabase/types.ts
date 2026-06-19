@@ -19,6 +19,7 @@ export type Database = {
           admob_banner_id: string | null
           admob_interstitial_id: string | null
           app_name: string
+          artifact_path: string | null
           artifact_url: string | null
           build_aab: boolean | null
           created_at: string
@@ -52,6 +53,7 @@ export type Database = {
           admob_banner_id?: string | null
           admob_interstitial_id?: string | null
           app_name: string
+          artifact_path?: string | null
           artifact_url?: string | null
           build_aab?: boolean | null
           created_at?: string
@@ -85,6 +87,7 @@ export type Database = {
           admob_banner_id?: string | null
           admob_interstitial_id?: string | null
           app_name?: string
+          artifact_path?: string | null
           artifact_url?: string | null
           build_aab?: boolean | null
           created_at?: string
