@@ -113,10 +113,33 @@ Deno.serve(async (req) => {
 
     if (dbError) throw new Error(`DB error: ${dbError.message}`);
 
+    // Pre-create a signed upload URL into the private apk-builds bucket.
+    // The GitHub Action uploads the finished binary directly to Lovable Cloud storage.
+    const ext = targetPlatform === "ios" ? "ipa" : build_aab ? "aab" : "apk";
+    const artifactPath = `${build.id}/app.${ext}`;
+
+    // Remove any prior object at this path so signed upload can succeed (idempotent retries).
+    await supabase.storage.from("apk-builds").remove([artifactPath]).catch(() => {});
+
+    const { data: signed, error: signErr } = await supabase
+      .storage
+      .from("apk-builds")
+      .createSignedUploadUrl(artifactPath);
+
+    if (signErr || !signed) throw new Error(`Signed upload URL failed: ${signErr?.message}`);
+
+    // signed.signedUrl is a relative path like /storage/v1/object/upload/sign/<bucket>/<path>?token=...
+    const uploadUrl = signed.signedUrl.startsWith("http")
+      ? signed.signedUrl
+      : `${supabaseUrl}${signed.signedUrl}`;
+
+    await supabase
+      .from("apk_builds")
+      .update({ artifact_path: artifactPath })
+      .eq("id", build.id);
+
     const callbackUrl = `${supabaseUrl}/functions/v1/build-callback`;
 
-    // GitHub client_payload allows max 10 top-level properties.
-    // Bundle all config into a single "config" object.
     const ghResponse = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/dispatches`, {
       method: "POST",
       headers: {
@@ -129,6 +152,8 @@ Deno.serve(async (req) => {
         client_payload: {
           build_id: build.id,
           callback_url: callbackUrl,
+          upload_url: uploadUrl,
+          artifact_path: artifactPath,
           config: JSON.stringify({
             website_url,
             app_name,
