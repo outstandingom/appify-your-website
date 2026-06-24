@@ -12,7 +12,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { build_id, status, run_id, artifact_path, error_message } = await req.json();
+    const { build_id, status, run_id, error_message } = await req.json();
 
     if (!build_id) {
       return new Response(
@@ -27,15 +27,12 @@ Deno.serve(async (req) => {
 
     const buildStatus = status === "success" ? "completed" : "failed";
 
-    const update: Record<string, unknown> = {
+    await supabase.from("apk_builds").update({
       status: buildStatus,
       github_run_id: run_id || null,
       error_message: status !== "success" ? (error_message || `Build ${status}`) : null,
       updated_at: new Date().toISOString(),
-    };
-    if (artifact_path) update.artifact_path = artifact_path;
-
-    await supabase.from("apk_builds").update(update).eq("id", build_id);
+    }).eq("id", build_id);
 
     return new Response(
       JSON.stringify({ success: true }),

@@ -1,5 +1,6 @@
-// v2: stream from Lovable Cloud storage
+// v3: stream artifact directly from GitHub Actions (no cloud storage)
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { unzipSync } from "https://esm.sh/fflate@0.8.2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -47,42 +48,96 @@ Deno.serve(async (req) => {
       );
     }
 
-    const artifactPath: string | null = build.artifact_path;
-    if (!artifactPath) {
+    const runId = build.github_run_id;
+    if (!runId) {
       return new Response(
-        JSON.stringify({ error: "Artifact not uploaded yet" }),
+        JSON.stringify({ error: "Build run id missing" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Download the file from private bucket and stream it back to the user.
-    const { data: file, error: dlErr } = await supabase
-      .storage
-      .from("apk-builds")
-      .download(artifactPath);
+    const GITHUB_TOKEN = Deno.env.get("GITHUB_TOKEN")!;
+    const GITHUB_REPO = Deno.env.get("GITHUB_REPO")!;
+    const ghHeaders = {
+      Authorization: `Bearer ${GITHUB_TOKEN}`,
+      Accept: "application/vnd.github.v3+json",
+    };
 
-    if (dlErr || !file) {
+    // List artifacts for the run
+    const listRes = await fetch(
+      `https://api.github.com/repos/${GITHUB_REPO}/actions/runs/${runId}/artifacts`,
+      { headers: ghHeaders }
+    );
+    if (!listRes.ok) {
+      const t = await listRes.text();
+      throw new Error(`GitHub artifact list failed [${listRes.status}]: ${t}`);
+    }
+    const listJson = await listRes.json();
+    const wanted = `app-build-${buildId}`;
+    const artifact =
+      listJson.artifacts?.find((a: any) => a.name === wanted) ||
+      listJson.artifacts?.[0];
+    if (!artifact) {
       return new Response(
-        JSON.stringify({ error: `Failed to fetch artifact: ${dlErr?.message || "unknown"}` }),
+        JSON.stringify({ error: "No artifact attached to build run" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Download the artifact zip
+    const dlRes = await fetch(
+      `https://api.github.com/repos/${GITHUB_REPO}/actions/artifacts/${artifact.id}/zip`,
+      { headers: ghHeaders, redirect: "follow" }
+    );
+    if (!dlRes.ok) {
+      const t = await dlRes.text();
+      throw new Error(`GitHub artifact download failed [${dlRes.status}]: ${t}`);
+    }
+    const zipBytes = new Uint8Array(await dlRes.arrayBuffer());
+    const entries = unzipSync(zipBytes);
+
+    // Pick the apk/aab/ipa inside the zip
+    const preferredExt =
+      build.platform === "ios" ? "ipa" : build.build_aab ? "aab" : "apk";
+    let chosenName: string | null = null;
+    let chosenBytes: Uint8Array | null = null;
+    for (const [name, bytes] of Object.entries(entries)) {
+      if (name.toLowerCase().endsWith(`.${preferredExt}`)) {
+        chosenName = name;
+        chosenBytes = bytes as Uint8Array;
+        break;
+      }
+    }
+    if (!chosenBytes) {
+      for (const [name, bytes] of Object.entries(entries)) {
+        if (/\.(apk|aab|ipa)$/i.test(name)) {
+          chosenName = name;
+          chosenBytes = bytes as Uint8Array;
+          break;
+        }
+      }
+    }
+    if (!chosenBytes || !chosenName) {
+      return new Response(
+        JSON.stringify({ error: "Artifact zip contained no app binary" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const ext = artifactPath.split(".").pop() || "bin";
+    const ext = chosenName.split(".").pop()!.toLowerCase();
     const contentType =
       ext === "apk" ? "application/vnd.android.package-archive" :
-      ext === "aab" ? "application/octet-stream" :
-      ext === "ipa" ? "application/octet-stream" :
       "application/octet-stream";
 
     const safeName = String(build.app_name || "app").replace(/[^a-z0-9-_]+/gi, "_");
 
-    return new Response(file.stream(), {
+    return new Response(chosenBytes, {
       status: 200,
       headers: {
         ...corsHeaders,
         "Content-Type": contentType,
         "Content-Disposition": `attachment; filename="${safeName}.${ext}"`,
+        "Content-Length": String(chosenBytes.byteLength),
       },
     });
   } catch (error) {

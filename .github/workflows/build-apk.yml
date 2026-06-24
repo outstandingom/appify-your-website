@@ -10,8 +10,6 @@ jobs:
     env:
       BUILD_ID: ${{ github.event.client_payload.build_id }}
       CALLBACK_URL: ${{ github.event.client_payload.callback_url }}
-      UPLOAD_URL: ${{ github.event.client_payload.upload_url }}
-      ARTIFACT_PATH: ${{ github.event.client_payload.artifact_path }}
       APP_CONFIG: ${{ github.event.client_payload.config }}
 
     steps:
@@ -47,29 +45,28 @@ jobs:
             ./gradlew assembleDebug --no-daemon --stacktrace
           fi
 
-      - name: Locate built artifact
+      - name: Stage built artifact
         id: locate
         run: |
           set -e
+          mkdir -p out
           if [ -f ".build_aab" ]; then
             FILE=$(find app/build/outputs/bundle/release -name "*.aab" | head -n 1)
+            EXT=aab
           else
             FILE=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+            EXT=apk
           fi
           if [ -z "$FILE" ]; then echo "No build artifact found"; exit 1; fi
-          echo "artifact_file=$FILE" >> "$GITHUB_OUTPUT"
-          ls -lh "$FILE"
+          cp "$FILE" "out/app.${EXT}"
+          ls -lh out/
 
-      - name: Upload artifact to Lovable Cloud storage
-        run: |
-          set -e
-          FILE="${{ steps.locate.outputs.artifact_file }}"
-          echo "Uploading $FILE to $ARTIFACT_PATH"
-          curl --fail-with-body -X PUT \
-            -H "Content-Type: application/octet-stream" \
-            -H "x-upsert: true" \
-            --data-binary "@${FILE}" \
-            "$UPLOAD_URL"
+      - name: Upload artifact to GitHub
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-build-${{ env.BUILD_ID }}
+          path: out/*
+          retention-days: 7
 
       - name: Notify build result
         if: always()
@@ -79,5 +76,5 @@ jobs:
           if [ -n "$CALLBACK_URL" ]; then
             curl -s -X POST "$CALLBACK_URL" \
               -H "Content-Type: application/json" \
-              -d "{\"build_id\": \"$BUILD_ID\", \"status\": \"$STATUS\", \"run_id\": \"$RUN_ID\", \"artifact_path\": \"$ARTIFACT_PATH\"}"
+              -d "{\"build_id\": \"$BUILD_ID\", \"status\": \"$STATUS\", \"run_id\": \"$RUN_ID\"}"
           fi
