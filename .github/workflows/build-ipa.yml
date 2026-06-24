@@ -10,8 +10,6 @@ jobs:
     env:
       BUILD_ID: ${{ github.event.client_payload.build_id }}
       CALLBACK_URL: ${{ github.event.client_payload.callback_url }}
-      UPLOAD_URL: ${{ github.event.client_payload.upload_url }}
-      ARTIFACT_PATH: ${{ github.event.client_payload.artifact_path }}
       APP_CONFIG: ${{ github.event.client_payload.config }}
 
     steps:
@@ -49,7 +47,6 @@ jobs:
             build
 
       - name: Package .app into unsigned .ipa
-        id: package
         run: |
           set -e
           cd ios-app
@@ -58,21 +55,16 @@ jobs:
           rm -rf Payload
           mkdir -p Payload
           cp -R "$APP_PATH" Payload/
-          mkdir -p ../ios-output
-          zip -qr "../ios-output/WebApp-unsigned.ipa" Payload
-          echo "artifact_file=ios-output/WebApp-unsigned.ipa" >> "$GITHUB_OUTPUT"
-          ls -la ../ios-output
+          mkdir -p ../out
+          zip -qr "../out/app.ipa" Payload
+          ls -la ../out
 
-      - name: Upload artifact to Lovable Cloud storage
-        run: |
-          set -e
-          FILE="${{ steps.package.outputs.artifact_file }}"
-          echo "Uploading $FILE to $ARTIFACT_PATH"
-          curl --fail-with-body -X PUT \
-            -H "Content-Type: application/octet-stream" \
-            -H "x-upsert: true" \
-            --data-binary "@${FILE}" \
-            "$UPLOAD_URL"
+      - name: Upload artifact to GitHub
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-build-${{ env.BUILD_ID }}
+          path: out/*
+          retention-days: 7
 
       - name: Notify build result
         if: always()
@@ -82,5 +74,5 @@ jobs:
           if [ -n "$CALLBACK_URL" ]; then
             curl -s -X POST "$CALLBACK_URL" \
               -H "Content-Type: application/json" \
-              -d "{\"build_id\": \"$BUILD_ID\", \"status\": \"$STATUS\", \"run_id\": \"$RUN_ID\", \"artifact_path\": \"$ARTIFACT_PATH\"}"
+              -d "{\"build_id\": \"$BUILD_ID\", \"status\": \"$STATUS\", \"run_id\": \"$RUN_ID\"}"
           fi
