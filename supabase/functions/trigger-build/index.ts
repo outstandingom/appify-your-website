@@ -129,8 +129,6 @@ Deno.serve(async (req) => {
         client_payload: {
           build_id: build.id,
           callback_url: callbackUrl,
-          upload_url: uploadUrl,
-          artifact_path: artifactPath,
           config: JSON.stringify({
             website_url,
             app_name,
