@@ -1,0 +1,58 @@
+name: Build APK / IPA
+
+# 👇 Make the workflow run from both manual trigger and API trigger
+on:
+  workflow_dispatch:
+    inputs:
+      website_url:
+        required: true
+        type: string
+      app_name:
+        required: true
+        type: string
+      icon_data:
+        type: string
+      package_name:
+        type: string
+      splash_color:
+        type: string
+      status_bar_color:
+        type: string
+      enable_push:
+        type: boolean
+        default: false
+      enable_offline:
+        type: boolean
+        default: false
+      offline_message:
+        type: string
+      enable_analytics:
+        type: boolean
+        default: false
+      enable_cookies:
+        type: boolean
+        default: true
+      enable_admob:
+        type: boolean
+        default: false
+      admob_banner_id:
+        type: string
+      admob_interstitial_id:
+        type: string
+      build_aab:
+        type: boolean
+        default: false
+      platform:
+        type: string
+        default: 'android'
+      tier:
+        type: string
+        default: 'free'
+
+  repository_dispatch:
+    types:
+      - build-apk
+      - build-ipa   # for iOS
+
+# 👇 This line is critical for the API to find the run
+run-name: Build ${{ github.event.client_payload.build_id || github.event.inputs.app_name }}
