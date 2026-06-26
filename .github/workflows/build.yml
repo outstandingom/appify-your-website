@@ -1,23 +1,43 @@
 name: Build APK / IPA
 
-# 👇 Make the workflow run from both manual trigger and API trigger
+# Unified build workflow. Triggered from:
+#  - Supabase edge function (trigger-build) via repository_dispatch (build-apk / build-ipa)
+#  - Manual run via workflow_dispatch with the same inputs as the frontend form
+#
+# All app-converter inputs are accepted here. The orchestrator scripts read the
+# APP_CONFIG env var (a JSON string with every field). The compiled APK/AAB/IPA
+# is uploaded as an artifact named `app-build-<build_id>` so the download-apk
+# edge function can stream it directly to the user.
+
 on:
   workflow_dispatch:
     inputs:
       website_url:
+        description: 'Target website URL'
         required: true
         type: string
       app_name:
+        description: 'App display name'
         required: true
         type: string
-      icon_data:
-        type: string
       package_name:
+        description: 'Android package name (com.x.y) / iOS bundle id'
+        required: false
+        type: string
+      icon_url:
+        description: 'Public URL to app icon (PNG/JPG/SVG)'
+        required: false
         type: string
       splash_color:
+        description: 'Splash background color (hex)'
+        required: false
         type: string
+        default: '#10B981'
       status_bar_color:
+        description: 'Status bar color (hex)'
+        required: false
         type: string
+        default: '#000000'
       enable_push:
         type: boolean
         default: false
@@ -26,6 +46,7 @@ on:
         default: false
       offline_message:
         type: string
+        default: 'You are offline. Please check your connection.'
       enable_analytics:
         type: boolean
         default: false
@@ -43,16 +64,288 @@ on:
         type: boolean
         default: false
       platform:
+        description: 'android | ios'
         type: string
         default: 'android'
       tier:
+        description: 'free | premium | pro'
         type: string
         default: 'free'
+      # Proxy / custom IP (Pro)
+      proxy_enabled:
+        type: boolean
+        default: false
+      proxy_type:
+        description: 'http | socks5'
+        type: string
+        default: 'http'
+      proxy_host:
+        type: string
+      proxy_port:
+        type: string
+      proxy_username:
+        type: string
+      proxy_password:
+        type: string
+      build_id:
+        description: 'Optional build id (used to name the artifact). Auto-generated if empty.'
+        type: string
 
   repository_dispatch:
     types:
       - build-apk
-      - build-ipa   # for iOS
+      - build-ipa
 
-# 👇 This line is critical for the API to find the run
-run-name: Build ${{ github.event.client_payload.build_id || github.event.inputs.app_name }}
+run-name: Build ${{ github.event.client_payload.build_id || github.event.inputs.app_name || github.run_id }}
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Resolve inputs from either trigger source into a single APP_CONFIG JSON
+  # plus a few top-level outputs used by the matrix.
+  # ---------------------------------------------------------------------------
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      build_id: ${{ steps.cfg.outputs.build_id }}
+      platform: ${{ steps.cfg.outputs.platform }}
+      build_aab: ${{ steps.cfg.outputs.build_aab }}
+      callback_url: ${{ steps.cfg.outputs.callback_url }}
+      app_config: ${{ steps.cfg.outputs.app_config }}
+    steps:
+      - name: Resolve inputs into APP_CONFIG
+        id: cfg
+        env:
+          DISPATCH_CONFIG: ${{ toJSON(github.event.client_payload.config) }}
+          DISPATCH_BUILD_ID: ${{ github.event.client_payload.build_id }}
+          DISPATCH_CALLBACK_URL: ${{ github.event.client_payload.callback_url }}
+          INPUTS_JSON: ${{ toJSON(github.event.inputs) }}
+          EVENT_NAME: ${{ github.event_name }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          python3 - <<'PY'
+          import json, os, uuid
+
+          event = os.environ.get("EVENT_NAME", "")
+          out_path = os.environ["GITHUB_OUTPUT"]
+
+          if event == "repository_dispatch":
+              raw_cfg = os.environ.get("DISPATCH_CONFIG", "null")
+              try:
+                  cfg_val = json.loads(raw_cfg)
+              except Exception:
+                  cfg_val = None
+              # client_payload.config is the JSON string sent by the edge function
+              if isinstance(cfg_val, str):
+                  config = json.loads(cfg_val)
+              elif isinstance(cfg_val, dict):
+                  config = cfg_val
+              else:
+                  config = {}
+              build_id = os.environ.get("DISPATCH_BUILD_ID") or str(uuid.uuid4())
+              callback_url = os.environ.get("DISPATCH_CALLBACK_URL", "")
+          else:
+              inputs = json.loads(os.environ.get("INPUTS_JSON") or "{}") or {}
+              def b(v, d=False):
+                  if isinstance(v, bool): return v
+                  if v is None or v == "": return d
+                  return str(v).lower() in ("1","true","yes","on")
+              config = {
+                  "website_url": inputs.get("website_url",""),
+                  "app_name": inputs.get("app_name",""),
+                  "package_name": inputs.get("package_name") or None,
+                  "icon_url": inputs.get("icon_url") or None,
+                  "splash_color": inputs.get("splash_color") or "#10B981",
+                  "status_bar_color": inputs.get("status_bar_color") or "#000000",
+                  "enable_push": b(inputs.get("enable_push")),
+                  "enable_offline": b(inputs.get("enable_offline")),
+                  "offline_message": inputs.get("offline_message") or "You are offline.",
+                  "enable_analytics": b(inputs.get("enable_analytics")),
+                  "enable_cookies": b(inputs.get("enable_cookies"), True),
+                  "enable_admob": b(inputs.get("enable_admob")),
+                  "admob_banner_id": inputs.get("admob_banner_id") or None,
+                  "admob_interstitial_id": inputs.get("admob_interstitial_id") or None,
+                  "build_aab": b(inputs.get("build_aab")),
+                  "platform": (inputs.get("platform") or "android").lower(),
+                  "tier": inputs.get("tier") or "free",
+                  "proxy_enabled": b(inputs.get("proxy_enabled")),
+                  "proxy_type": inputs.get("proxy_type") or "http",
+                  "proxy_host": inputs.get("proxy_host") or None,
+                  "proxy_port": int(inputs.get("proxy_port")) if (inputs.get("proxy_port") or "").strip().isdigit() else None,
+                  "proxy_username": inputs.get("proxy_username") or None,
+                  "proxy_password": inputs.get("proxy_password") or None,
+              }
+              build_id = inputs.get("build_id") or str(uuid.uuid4())
+              callback_url = ""
+
+          platform = (config.get("platform") or "android").lower()
+          if platform not in ("android", "ios"):
+              platform = "android"
+          build_aab = bool(config.get("build_aab"))
+
+          app_config_json = json.dumps(config, separators=(",", ":"))
+
+          with open(out_path, "a") as f:
+              f.write(f"build_id={build_id}\n")
+              f.write(f"platform={platform}\n")
+              f.write(f"build_aab={'true' if build_aab else 'false'}\n")
+              f.write(f"callback_url={callback_url}\n")
+              # Use a heredoc marker to safely emit JSON
+              f.write("app_config<<__APPCFG__\n")
+              f.write(app_config_json + "\n")
+              f.write("__APPCFG__\n")
+
+          print("Resolved build_id:", build_id, "platform:", platform, "aab:", build_aab)
+          PY
+
+  # ---------------------------------------------------------------------------
+  # Android build (APK or AAB)
+  # ---------------------------------------------------------------------------
+  android:
+    needs: prepare
+    if: needs.prepare.outputs.platform == 'android'
+    runs-on: ubuntu-latest
+    env:
+      BUILD_ID: ${{ needs.prepare.outputs.build_id }}
+      CALLBACK_URL: ${{ needs.prepare.outputs.callback_url }}
+      APP_CONFIG: ${{ needs.prepare.outputs.app_config }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Install Python 3 and ImageMagick
+        run: |
+          sudo apt-get update && sudo apt-get install -y imagemagick python3
+          python3 --version
+
+      - name: Generate Android project
+        run: python3 orchestrator.py
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Compile APK or AAB
+        run: |
+          gradle wrapper --gradle-version 8.4
+          chmod +x gradlew
+          if [ -f ".build_aab" ]; then
+            echo "Building AAB (release)..."
+            ./gradlew bundleRelease --no-daemon --stacktrace
+          else
+            echo "Building APK (debug)..."
+            ./gradlew assembleDebug --no-daemon --stacktrace
+          fi
+
+      - name: Stage built artifact
+        run: |
+          set -e
+          mkdir -p out
+          if [ -f ".build_aab" ]; then
+            FILE=$(find app/build/outputs/bundle/release -name "*.aab" | head -n 1)
+            EXT=aab
+          else
+            FILE=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+            EXT=apk
+          fi
+          if [ -z "$FILE" ]; then echo "No build artifact found"; exit 1; fi
+          cp "$FILE" "out/app.${EXT}"
+          ls -lh out/
+
+      - name: Upload artifact to GitHub
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-build-${{ env.BUILD_ID }}
+          path: out/*
+          retention-days: 7
+
+      - name: Notify build result
+        if: always()
+        run: |
+          STATUS="${{ job.status }}"
+          RUN_ID="${{ github.run_id }}"
+          if [ -n "$CALLBACK_URL" ]; then
+            curl -s -X POST "$CALLBACK_URL" \
+              -H "Content-Type: application/json" \
+              -d "{\"build_id\": \"$BUILD_ID\", \"status\": \"$STATUS\", \"run_id\": \"$RUN_ID\"}"
+          fi
+
+  # ---------------------------------------------------------------------------
+  # iOS build (unsigned IPA)
+  # ---------------------------------------------------------------------------
+  ios:
+    needs: prepare
+    if: needs.prepare.outputs.platform == 'ios'
+    runs-on: macos-14
+    env:
+      BUILD_ID: ${{ needs.prepare.outputs.build_id }}
+      CALLBACK_URL: ${{ needs.prepare.outputs.callback_url }}
+      APP_CONFIG: ${{ needs.prepare.outputs.app_config }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - name: Set up Python 3
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Generate iOS Xcode project
+        run: python3 ios_orchestrator.py
+
+      - name: Build unsigned .app for real device (arm64)
+        run: |
+          set -e
+          cd ios-app
+          xcodebuild \
+            -project WebApp.xcodeproj \
+            -scheme WebApp \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            PROVISIONING_PROFILE="" \
+            build
+
+      - name: Package .app into unsigned .ipa
+        run: |
+          set -e
+          cd ios-app
+          APP_PATH=$(find build/Build/Products/Release-iphoneos -maxdepth 2 -name "*.app" | head -n 1)
+          if [ -z "$APP_PATH" ]; then echo "No .app produced"; exit 1; fi
+          rm -rf Payload
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/
+          mkdir -p ../out
+          zip -qr "../out/app.ipa" Payload
+          ls -la ../out
+
+      - name: Upload artifact to GitHub
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-build-${{ env.BUILD_ID }}
+          path: out/*
+          retention-days: 7
+
+      - name: Notify build result
+        if: always()
+        run: |
+          STATUS="${{ job.status }}"
+          RUN_ID="${{ github.run_id }}"
+          if [ -n "$CALLBACK_URL" ]; then
+            curl -s -X POST "$CALLBACK_URL" \
+              -H "Content-Type: application/json" \
+              -d "{\"build_id\": \"$BUILD_ID\", \"status\": \"$STATUS\", \"run_id\": \"$RUN_ID\"}"
+          fi
