@@ -1,0 +1,79 @@
+name: Build WebView APK
+
+on:
+  repository_dispatch:
+    types: [build-apk]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      BUILD_ID: ${{ github.event.client_payload.build_id }}
+      CALLBACK_URL: ${{ github.event.client_payload.callback_url }}
+      APP_CONFIG: ${{ github.event.client_payload.config }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Install Python 3 and ImageMagick
+        run: |
+          sudo apt-get update && sudo apt-get install -y imagemagick python3
+          python3 --version
+
+      - name: Generate Android project
+        run: python3 orchestrator.py
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Compile APK or AAB
+        run: |
+          gradle wrapper --gradle-version 8.4
+          chmod +x gradlew
+          if [ -f ".build_aab" ]; then
+            echo "Building AAB (release)..."
+            ./gradlew bundleRelease --no-daemon --stacktrace
+          else
+            echo "Building APK (debug)..."
+            ./gradlew assembleDebug --no-daemon --stacktrace
+          fi
+
+      - name: Stage built artifact
+        run: |
+          set -e
+          mkdir -p out
+          if [ -f ".build_aab" ]; then
+            FILE=$(find app/build/outputs/bundle/release -name "*.aab" | head -n 1)
+            EXT=aab
+          else
+            FILE=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+            EXT=apk
+          fi
+          if [ -z "$FILE" ]; then echo "No build artifact found"; exit 1; fi
+          cp "$FILE" "out/app.${EXT}"
+          ls -lh out/
+
+      - name: Upload artifact to GitHub
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-build-${{ env.BUILD_ID }}
+          path: out/*
+          retention-days: 7
+
+      - name: Notify build result
+        if: always()
+        run: |
+          STATUS="${{ job.status }}"
+          RUN_ID="${{ github.run_id }}"
+          if [ -n "$CALLBACK_URL" ]; then
+            curl -s -X POST "$CALLBACK_URL" \
+              -H "Content-Type: application/json" \
+              -d "{\"build_id\": \"$BUILD_ID\", \"status\": \"$STATUS\", \"run_id\": \"$RUN_ID\"}"
+          fi
