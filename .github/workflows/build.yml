@@ -1,14 +1,5 @@
 name: Build APK / IPA
 
-# Unified build workflow. Triggered from:
-#  - Supabase edge function (trigger-build) via repository_dispatch (build-apk / build-ipa)
-#  - Manual run via workflow_dispatch with the same inputs as the frontend form
-#
-# All app-converter inputs are accepted here. The orchestrator scripts read the
-# APP_CONFIG env var (a JSON string with every field). The compiled APK/AAB/IPA
-# is uploaded as an artifact named `app-build-<build_id>` so the download-apk
-# edge function can stream it directly to the user.
-
 on:
   workflow_dispatch:
     inputs:
@@ -71,7 +62,6 @@ on:
         description: 'free | premium | pro'
         type: string
         default: 'free'
-      # Proxy / custom IP (Pro)
       proxy_enabled:
         type: boolean
         default: false
@@ -99,10 +89,6 @@ on:
 run-name: Build ${{ github.event.client_payload.build_id || github.event.inputs.app_name || github.run_id }}
 
 jobs:
-  # ---------------------------------------------------------------------------
-  # Resolve inputs from either trigger source into a single APP_CONFIG JSON
-  # plus a few top-level outputs used by the matrix.
-  # ---------------------------------------------------------------------------
   prepare:
     runs-on: ubuntu-latest
     outputs:
@@ -134,7 +120,6 @@ jobs:
                   cfg_val = json.loads(raw_cfg)
               except Exception:
                   cfg_val = None
-              # client_payload.config is the JSON string sent by the edge function
               if isinstance(cfg_val, str):
                   config = json.loads(cfg_val)
               elif isinstance(cfg_val, dict):
@@ -189,7 +174,6 @@ jobs:
               f.write(f"platform={platform}\n")
               f.write(f"build_aab={'true' if build_aab else 'false'}\n")
               f.write(f"callback_url={callback_url}\n")
-              # Use a heredoc marker to safely emit JSON
               f.write("app_config<<__APPCFG__\n")
               f.write(app_config_json + "\n")
               f.write("__APPCFG__\n")
@@ -197,9 +181,6 @@ jobs:
           print("Resolved build_id:", build_id, "platform:", platform, "aab:", build_aab)
           PY
 
-  # ---------------------------------------------------------------------------
-  # Android build (APK or AAB)
-  # ---------------------------------------------------------------------------
   android:
     needs: prepare
     if: needs.prepare.outputs.platform == 'android'
@@ -257,11 +238,27 @@ jobs:
           ls -lh out/
 
       - name: Upload artifact to GitHub
+        id: upload
         uses: actions/upload-artifact@v4
         with:
           name: app-build-${{ env.BUILD_ID }}
           path: out/*
           retention-days: 7
+
+      - name: Update database with artifact URL
+        if: success()
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          ARTIFACT_URL="https://api.github.com/repos/${{ github.repository }}/actions/artifacts/${{ steps.upload.outputs.artifact-id }}/zip"
+          
+          curl -X PATCH "$SUPABASE_URL/rest/v1/apk_builds?build_id=eq.$BUILD_ID" \
+            -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Content-Type: application/json" \
+            -H "Prefer: return=minimal" \
+            -d "{\"artifact_url\": \"$ARTIFACT_URL\", \"status\": \"completed\", \"updated_at\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"
 
       - name: Notify build result
         if: always()
@@ -274,9 +271,6 @@ jobs:
               -d "{\"build_id\": \"$BUILD_ID\", \"status\": \"$STATUS\", \"run_id\": \"$RUN_ID\"}"
           fi
 
-  # ---------------------------------------------------------------------------
-  # iOS build (unsigned IPA)
-  # ---------------------------------------------------------------------------
   ios:
     needs: prepare
     if: needs.prepare.outputs.platform == 'ios'
@@ -333,11 +327,27 @@ jobs:
           ls -la ../out
 
       - name: Upload artifact to GitHub
+        id: upload
         uses: actions/upload-artifact@v4
         with:
           name: app-build-${{ env.BUILD_ID }}
           path: out/*
           retention-days: 7
+
+      - name: Update database with artifact URL
+        if: success()
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          ARTIFACT_URL="https://api.github.com/repos/${{ github.repository }}/actions/artifacts/${{ steps.upload.outputs.artifact-id }}/zip"
+          
+          curl -X PATCH "$SUPABASE_URL/rest/v1/apk_builds?build_id=eq.$BUILD_ID" \
+            -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Content-Type: application/json" \
+            -H "Prefer: return=minimal" \
+            -d "{\"artifact_url\": \"$ARTIFACT_URL\", \"status\": \"completed\", \"updated_at\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"
 
       - name: Notify build result
         if: always()
