@@ -2,15 +2,56 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { unzipSync } from "https://esm.sh/fflate@0.8.2";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+const ALLOWED_HOSTS = [
+  "www.growhaz.com",
+  "growhaz.com",
+  "www.growhaz.in",
+  "growhaz.in",
+];
+
+const isAllowedHost = (host: string) =>
+  ALLOWED_HOSTS.includes(host) ||
+  host.endsWith(".lovable.app") ||
+  host.endsWith(".lovableproject.com");
+
+const corsHeaders = (req: Request) => {
+  const origin = req.headers.get("origin") || "";
+  let originHost = "";
+  try { originHost = new URL(origin).hostname; } catch {}
+  const allow = origin && isAllowedHost(originHost) ? origin : "https://www.growhaz.com";
+  return {
+    "Access-Control-Allow-Origin": allow,
+    "Vary": "Origin",
+    "Access-Control-Allow-Headers":
+      "authorization, x-client-info, apikey, content-type, x-api-key",
+  } as Record<string, string>;
 };
 
 Deno.serve(async (req) => {
+  const cors = corsHeaders(req);
+
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { headers: cors });
+  }
+
+  // Gate access by Origin (XHR/fetch) OR Referer (direct browser nav from window.open)
+  // OR a valid server-to-server API key.
+  const origin = req.headers.get("origin");
+  const referer = req.headers.get("referer") || "";
+  let refHost = "";
+  try { refHost = new URL(referer).hostname; } catch {}
+  const apiKey = req.headers.get("x-api-key");
+  const expectedKey = Deno.env.get("PUBLIC_API_KEY");
+
+  const originOk = origin ? isAllowedHost(new URL(origin).hostname) : false;
+  const refererOk = refHost ? isAllowedHost(refHost) : false;
+  const apiOk = expectedKey && apiKey === expectedKey;
+
+  if (!originOk && !refererOk && !apiOk) {
+    return new Response(
+      JSON.stringify({ error: "Forbidden. API restricted to growhaz.com / growhaz.in" }),
+      { status: 403, headers: { ...cors, "Content-Type": "application/json" } }
+    );
   }
 
   try {
@@ -20,7 +61,7 @@ Deno.serve(async (req) => {
     if (!buildId) {
       return new Response(
         JSON.stringify({ error: "build_id is required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 400, headers: { ...cors, "Content-Type": "application/json" } }
       );
     }
 
@@ -37,14 +78,14 @@ Deno.serve(async (req) => {
     if (error || !build) {
       return new Response(
         JSON.stringify({ error: "Build not found" }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 404, headers: { ...cors, "Content-Type": "application/json" } }
       );
     }
 
     if (build.status !== "completed") {
       return new Response(
         JSON.stringify({ error: "Build not completed yet", status: build.status }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 400, headers: { ...cors, "Content-Type": "application/json" } }
       );
     }
 
@@ -52,7 +93,7 @@ Deno.serve(async (req) => {
     if (!runId) {
       return new Response(
         JSON.stringify({ error: "Build run id missing" }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 404, headers: { ...cors, "Content-Type": "application/json" } }
       );
     }
 
@@ -80,7 +121,7 @@ Deno.serve(async (req) => {
     if (!artifact) {
       return new Response(
         JSON.stringify({ error: "No artifact attached to build run" }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 404, headers: { ...cors, "Content-Type": "application/json" } }
       );
     }
 
@@ -120,7 +161,7 @@ Deno.serve(async (req) => {
     if (!chosenBytes || !chosenName) {
       return new Response(
         JSON.stringify({ error: "Artifact zip contained no app binary" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 500, headers: { ...cors, "Content-Type": "application/json" } }
       );
     }
 
@@ -134,7 +175,7 @@ Deno.serve(async (req) => {
     return new Response(chosenBytes, {
       status: 200,
       headers: {
-        ...corsHeaders,
+        ...cors,
         "Content-Type": contentType,
         "Content-Disposition": `attachment; filename="${safeName}.${ext}"`,
         "Content-Length": String(chosenBytes.byteLength),
@@ -145,7 +186,7 @@ Deno.serve(async (req) => {
     const message = error instanceof Error ? error.message : "Unknown error";
     return new Response(
       JSON.stringify({ error: message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 500, headers: { ...cors, "Content-Type": "application/json" } }
     );
   }
 });

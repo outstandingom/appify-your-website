@@ -1,9 +1,28 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+const ALLOWED_ORIGINS = [
+  "https://www.growhaz.com",
+  "https://growhaz.com",
+  "https://www.growhaz.in",
+  "https://growhaz.in",
+];
+
+const buildCorsHeaders = (req: Request) => {
+  const origin = req.headers.get("origin") || "";
+  const host = (() => { try { return new URL(origin).hostname; } catch { return ""; } })();
+  // Allow growhaz.com / growhaz.in (with or without www) and Lovable preview subdomains
+  const isAllowed =
+    ALLOWED_ORIGINS.includes(origin) ||
+    host.endsWith(".lovable.app") ||
+    host.endsWith(".lovableproject.com");
+  return {
+    "Access-Control-Allow-Origin": isAllowed ? origin : "https://www.growhaz.com",
+    "Vary": "Origin",
+    "Access-Control-Allow-Headers":
+      "authorization, x-client-info, apikey, content-type, x-api-key",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "_allowed": isAllowed ? "1" : "0",
+  } as Record<string, string>;
 };
 
 const dataUrlToBytes = (dataUrl: string) => {
@@ -17,8 +36,31 @@ const dataUrlToBytes = (dataUrl: string) => {
 };
 
 Deno.serve(async (req) => {
+  const corsHeaders = buildCorsHeaders(req);
+  const allowed = corsHeaders["_allowed"] === "1";
+  delete corsHeaders["_allowed"];
+
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
+  }
+
+  // Allow server-to-server API calls (no Origin header) with a valid API key
+  const hasOrigin = !!req.headers.get("origin");
+  const apiKey = req.headers.get("x-api-key");
+  const expectedKey = Deno.env.get("PUBLIC_API_KEY");
+  const serverToServerOk = !hasOrigin && expectedKey && apiKey === expectedKey;
+
+  if (hasOrigin && !allowed) {
+    return new Response(
+      JSON.stringify({ error: "Origin not allowed. API is restricted to growhaz.com / growhaz.in" }),
+      { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+  if (!hasOrigin && !serverToServerOk) {
+    return new Response(
+      JSON.stringify({ error: "Missing or invalid x-api-key for server-to-server access" }),
+      { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
   }
 
   try {
