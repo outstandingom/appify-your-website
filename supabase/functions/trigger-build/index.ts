@@ -19,7 +19,7 @@ const buildCorsHeaders = (req: Request) => {
     "Access-Control-Allow-Origin": isAllowed ? origin : "https://www.growhaz.com",
     "Vary": "Origin",
     "Access-Control-Allow-Headers":
-      "authorization, x-client-info, apikey, content-type",
+      "authorization, x-client-info, apikey, content-type, x-api-key",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "_allowed": isAllowed ? "1" : "0",
   } as Record<string, string>;
