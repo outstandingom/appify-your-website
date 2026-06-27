@@ -36,8 +36,31 @@ const dataUrlToBytes = (dataUrl: string) => {
 };
 
 Deno.serve(async (req) => {
+  const corsHeaders = buildCorsHeaders(req);
+  const allowed = corsHeaders["_allowed"] === "1";
+  delete corsHeaders["_allowed"];
+
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
+  }
+
+  // Allow server-to-server API calls (no Origin header) with a valid API key
+  const hasOrigin = !!req.headers.get("origin");
+  const apiKey = req.headers.get("x-api-key");
+  const expectedKey = Deno.env.get("PUBLIC_API_KEY");
+  const serverToServerOk = !hasOrigin && expectedKey && apiKey === expectedKey;
+
+  if (hasOrigin && !allowed) {
+    return new Response(
+      JSON.stringify({ error: "Origin not allowed. API is restricted to growhaz.com / growhaz.in" }),
+      { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+  if (!hasOrigin && !serverToServerOk) {
+    return new Response(
+      JSON.stringify({ error: "Missing or invalid x-api-key for server-to-server access" }),
+      { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
   }
 
   try {
