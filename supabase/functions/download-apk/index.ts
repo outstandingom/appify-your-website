@@ -61,7 +61,7 @@ Deno.serve(async (req) => {
     if (!buildId) {
       return new Response(
         JSON.stringify({ error: "build_id is required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 400, headers: { ...cors, "Content-Type": "application/json" } }
       );
     }
 
@@ -78,14 +78,14 @@ Deno.serve(async (req) => {
     if (error || !build) {
       return new Response(
         JSON.stringify({ error: "Build not found" }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 404, headers: { ...cors, "Content-Type": "application/json" } }
       );
     }
 
     if (build.status !== "completed") {
       return new Response(
         JSON.stringify({ error: "Build not completed yet", status: build.status }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 400, headers: { ...cors, "Content-Type": "application/json" } }
       );
     }
 
@@ -93,7 +93,7 @@ Deno.serve(async (req) => {
     if (!runId) {
       return new Response(
         JSON.stringify({ error: "Build run id missing" }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 404, headers: { ...cors, "Content-Type": "application/json" } }
       );
     }
 
@@ -121,7 +121,7 @@ Deno.serve(async (req) => {
     if (!artifact) {
       return new Response(
         JSON.stringify({ error: "No artifact attached to build run" }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 404, headers: { ...cors, "Content-Type": "application/json" } }
       );
     }
 
@@ -161,7 +161,7 @@ Deno.serve(async (req) => {
     if (!chosenBytes || !chosenName) {
       return new Response(
         JSON.stringify({ error: "Artifact zip contained no app binary" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 500, headers: { ...cors, "Content-Type": "application/json" } }
       );
     }
 
@@ -175,7 +175,7 @@ Deno.serve(async (req) => {
     return new Response(chosenBytes, {
       status: 200,
       headers: {
-        ...corsHeaders,
+        ...cors,
         "Content-Type": contentType,
         "Content-Disposition": `attachment; filename="${safeName}.${ext}"`,
         "Content-Length": String(chosenBytes.byteLength),
@@ -186,7 +186,7 @@ Deno.serve(async (req) => {
     const message = error instanceof Error ? error.message : "Unknown error";
     return new Response(
       JSON.stringify({ error: message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 500, headers: { ...cors, "Content-Type": "application/json" } }
     );
   }
 });
