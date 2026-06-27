@@ -1,9 +1,28 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+const ALLOWED_ORIGINS = [
+  "https://www.growhaz.com",
+  "https://growhaz.com",
+  "https://www.growhaz.in",
+  "https://growhaz.in",
+];
+
+const buildCorsHeaders = (req: Request) => {
+  const origin = req.headers.get("origin") || "";
+  const host = (() => { try { return new URL(origin).hostname; } catch { return ""; } })();
+  // Allow growhaz.com / growhaz.in (with or without www) and Lovable preview subdomains
+  const isAllowed =
+    ALLOWED_ORIGINS.includes(origin) ||
+    host.endsWith(".lovable.app") ||
+    host.endsWith(".lovableproject.com");
+  return {
+    "Access-Control-Allow-Origin": isAllowed ? origin : "https://www.growhaz.com",
+    "Vary": "Origin",
+    "Access-Control-Allow-Headers":
+      "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "_allowed": isAllowed ? "1" : "0",
+  } as Record<string, string>;
 };
 
 const dataUrlToBytes = (dataUrl: string) => {
