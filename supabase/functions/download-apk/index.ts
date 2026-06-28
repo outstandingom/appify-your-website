@@ -7,6 +7,7 @@ const ALLOWED_HOSTS = [
   "growhaz.com",
   "www.growhaz.in",
   "growhaz.in",
+  "appify-your-website.vercel.app",
 ];
 
 const isAllowedHost = (host: string) =>

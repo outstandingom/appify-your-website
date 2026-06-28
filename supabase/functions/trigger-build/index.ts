@@ -5,6 +5,7 @@ const ALLOWED_ORIGINS = [
   "https://growhaz.com",
   "https://www.growhaz.in",
   "https://growhaz.in",
+  "https://appify-your-website.vercel.app",
 ];
 
 const isAllowedDevOrigin = (origin: string, host: string) => {
