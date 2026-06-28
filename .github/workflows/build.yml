@@ -245,20 +245,43 @@ jobs:
           path: out/*
           retention-days: 7
 
+      - name: Get Artifact URL
+        id: get-artifact
+        if: success()
+        run: |
+          # Get the artifact ID from the upload step
+          echo "Artifact ID: ${{ steps.upload.outputs.artifact-id }}"
+          
+          # Get the run ID
+          RUN_ID="${{ github.run_id }}"
+          REPO="${{ github.repository }}"
+          
+          # Construct the artifact URL
+          ARTIFACT_URL="https://api.github.com/repos/${REPO}/actions/artifacts/${{ steps.upload.outputs.artifact-id }}/zip"
+          
+          echo "artifact_url=${ARTIFACT_URL}" >> $GITHUB_OUTPUT
+          echo "Artifact URL: ${ARTIFACT_URL}"
+
       - name: Update database with artifact URL
         if: success()
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ARTIFACT_URL: ${{ steps.get-artifact.outputs.artifact_url }}
         run: |
-          ARTIFACT_URL="https://api.github.com/repos/${{ github.repository }}/actions/artifacts/${{ steps.upload.outputs.artifact-id }}/zip"
+          if [ -z "$ARTIFACT_URL" ]; then
+            echo "❌ ARTIFACT_URL is empty"
+            exit 1
+          fi
+          
+          echo "📦 Updating build with artifact URL: $ARTIFACT_URL"
           
           curl -X PATCH "$SUPABASE_URL/rest/v1/apk_builds?build_id=eq.$BUILD_ID" \
             -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
             -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
             -H "Content-Type: application/json" \
             -H "Prefer: return=minimal" \
-            -d "{\"artifact_url\": \"$ARTIFACT_URL\", \"status\": \"completed\", \"updated_at\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"
+            -d "{\"build_url\": \"$ARTIFACT_URL\", \"status\": \"completed\", \"updated_at\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"
 
       - name: Notify build result
         if: always()
@@ -334,20 +357,35 @@ jobs:
           path: out/*
           retention-days: 7
 
+      - name: Get Artifact URL
+        id: get-artifact
+        if: success()
+        run: |
+          echo "Artifact ID: ${{ steps.upload.outputs.artifact-id }}"
+          ARTIFACT_URL="https://api.github.com/repos/${{ github.repository }}/actions/artifacts/${{ steps.upload.outputs.artifact-id }}/zip"
+          echo "artifact_url=${ARTIFACT_URL}" >> $GITHUB_OUTPUT
+          echo "Artifact URL: ${ARTIFACT_URL}"
+
       - name: Update database with artifact URL
         if: success()
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ARTIFACT_URL: ${{ steps.get-artifact.outputs.artifact_url }}
         run: |
-          ARTIFACT_URL="https://api.github.com/repos/${{ github.repository }}/actions/artifacts/${{ steps.upload.outputs.artifact-id }}/zip"
+          if [ -z "$ARTIFACT_URL" ]; then
+            echo "❌ ARTIFACT_URL is empty"
+            exit 1
+          fi
+          
+          echo "📦 Updating build with artifact URL: $ARTIFACT_URL"
           
           curl -X PATCH "$SUPABASE_URL/rest/v1/apk_builds?build_id=eq.$BUILD_ID" \
             -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
             -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
             -H "Content-Type: application/json" \
             -H "Prefer: return=minimal" \
-            -d "{\"artifact_url\": \"$ARTIFACT_URL\", \"status\": \"completed\", \"updated_at\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"
+            -d "{\"build_url\": \"$ARTIFACT_URL\", \"status\": \"completed\", \"updated_at\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"
 
       - name: Notify build result
         if: always()
