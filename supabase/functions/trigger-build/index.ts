@@ -163,7 +163,7 @@ Deno.serve(async (req) => {
         proxy_username: proxy_enabled ? (proxy_username || null) : null,
         proxy_password: proxy_enabled ? (proxy_password || null) : null,
       })
-      .select()
+      .select("id")
       .single();
 
     if (dbError) throw new Error(`DB error: ${dbError.message}`);
