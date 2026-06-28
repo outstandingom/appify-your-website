@@ -208,6 +208,7 @@ Deno.serve(async (req) => {
             proxy_port: proxy_enabled && proxy_port ? Number(proxy_port) : null,
             proxy_username: proxy_enabled ? (proxy_username || null) : null,
             proxy_password: proxy_enabled ? (proxy_password || null) : null,
+            supabase_anon_key: Deno.env.get("SUPABASE_ANON_KEY") || "",
           }),
         },
       }),
