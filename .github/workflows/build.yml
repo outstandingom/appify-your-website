@@ -245,36 +245,43 @@ jobs:
           path: out/*
           retention-days: 7
 
-      - name: Get Artifact URL
-        id: get-artifact
-        if: success()
-        run: |
-          # Get the artifact ID from the upload step
-          echo "Artifact ID: ${{ steps.upload.outputs.artifact-id }}"
-          
-          # Get the run ID
-          RUN_ID="${{ github.run_id }}"
-          REPO="${{ github.repository }}"
-          
-          # Construct the artifact URL
-          ARTIFACT_URL="https://api.github.com/repos/${REPO}/actions/artifacts/${{ steps.upload.outputs.artifact-id }}/zip"
-          
-          echo "artifact_url=${ARTIFACT_URL}" >> $GITHUB_OUTPUT
-          echo "Artifact URL: ${ARTIFACT_URL}"
-
       - name: Update database with artifact URL
         if: success()
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          ARTIFACT_URL: ${{ steps.get-artifact.outputs.artifact_url }}
+          BUILD_ID: ${{ env.BUILD_ID }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
         run: |
-          if [ -z "$ARTIFACT_URL" ]; then
-            echo "❌ ARTIFACT_URL is empty"
+          echo "🔍 Getting artifact ID..."
+          
+          # Get the artifact ID using GitHub API
+          ARTIFACT_INFO=$(curl -s \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/${REPO}/actions/runs/${RUN_ID}/artifacts")
+          
+          echo "Artifact info: $ARTIFACT_INFO"
+          
+          # Extract the artifact ID using jq
+          ARTIFACT_ID=$(echo "$ARTIFACT_INFO" | jq -r '.artifacts[0].id')
+          
+          if [ -z "$ARTIFACT_ID" ] || [ "$ARTIFACT_ID" = "null" ]; then
+            echo "❌ No artifact found"
             exit 1
           fi
           
-          echo "📦 Updating build with artifact URL: $ARTIFACT_URL"
+          echo "✅ Artifact ID: $ARTIFACT_ID"
+          
+          # Construct the URL properly - no extra characters
+          ARTIFACT_URL="https://api.github.com/repos/${REPO}/actions/artifacts/${ARTIFACT_ID}/zip"
+          
+          echo "📦 Artifact URL: $ARTIFACT_URL"
+          
+          # Update Supabase
+          echo "📤 Updating Supabase with artifact URL..."
           
           curl -X PATCH "$SUPABASE_URL/rest/v1/apk_builds?build_id=eq.$BUILD_ID" \
             -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
@@ -357,28 +364,37 @@ jobs:
           path: out/*
           retention-days: 7
 
-      - name: Get Artifact URL
-        id: get-artifact
-        if: success()
-        run: |
-          echo "Artifact ID: ${{ steps.upload.outputs.artifact-id }}"
-          ARTIFACT_URL="https://api.github.com/repos/${{ github.repository }}/actions/artifacts/${{ steps.upload.outputs.artifact-id }}/zip"
-          echo "artifact_url=${ARTIFACT_URL}" >> $GITHUB_OUTPUT
-          echo "Artifact URL: ${ARTIFACT_URL}"
-
       - name: Update database with artifact URL
         if: success()
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          ARTIFACT_URL: ${{ steps.get-artifact.outputs.artifact_url }}
+          BUILD_ID: ${{ env.BUILD_ID }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
         run: |
-          if [ -z "$ARTIFACT_URL" ]; then
-            echo "❌ ARTIFACT_URL is empty"
+          echo "🔍 Getting artifact ID..."
+          
+          ARTIFACT_INFO=$(curl -s \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/${REPO}/actions/runs/${RUN_ID}/artifacts")
+          
+          echo "Artifact info: $ARTIFACT_INFO"
+          
+          ARTIFACT_ID=$(echo "$ARTIFACT_INFO" | jq -r '.artifacts[0].id')
+          
+          if [ -z "$ARTIFACT_ID" ] || [ "$ARTIFACT_ID" = "null" ]; then
+            echo "❌ No artifact found"
             exit 1
           fi
           
-          echo "📦 Updating build with artifact URL: $ARTIFACT_URL"
+          echo "✅ Artifact ID: $ARTIFACT_ID"
+          
+          ARTIFACT_URL="https://api.github.com/repos/${REPO}/actions/artifacts/${ARTIFACT_ID}/zip"
+          
+          echo "📦 Artifact URL: $ARTIFACT_URL"
           
           curl -X PATCH "$SUPABASE_URL/rest/v1/apk_builds?build_id=eq.$BUILD_ID" \
             -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
