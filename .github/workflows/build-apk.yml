@@ -81,41 +81,66 @@ jobs:
         run: |
           echo "🔍 Getting artifact URL..."
           
-          # Get artifact URL using GitHub API
-          ARTIFACT_URL=$(curl -s \
+          # Get artifact URL and CLEAN it (remove hidden characters)
+          RAW_URL=$(curl -s \
             -H "Authorization: token $GITHUB_TOKEN" \
             -H "Accept: application/vnd.github.v3+json" \
             "https://api.github.com/repos/${REPO}/actions/runs/${RUN_ID}/artifacts" \
             | jq -r '.artifacts[0].archive_download_url')
           
-          echo "📦 Artifact URL: $ARTIFACT_URL"
+          # Clean the URL - remove carriage returns, newlines, and trim whitespace
+          ARTIFACT_URL=$(echo "$RAW_URL" | tr -d '\r\n' | xargs)
+          
+          echo "📦 Raw URL: $RAW_URL"
+          echo "📦 Clean URL: $ARTIFACT_URL"
           
           if [ -z "$ARTIFACT_URL" ] || [ "$ARTIFACT_URL" = "null" ]; then
             echo "❌ No artifact URL found"
             exit 1
           fi
           
-          # Create JSON payload using a file (avoids escaping issues)
-          cat > patch_data.json <<EOF
-          {
-            "build_url": "$ARTIFACT_URL",
-            "status": "completed",
-            "updated_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          }
-          EOF
+          # Verify URL format - must start with https://
+          if [[ ! "$ARTIFACT_URL" =~ ^https:// ]]; then
+            echo "❌ Invalid URL format: $ARTIFACT_URL"
+            exit 1
+          fi
           
+          # Method 1: Use printf to create JSON (avoids file issues)
           echo "📤 Updating Supabase with artifact URL..."
           
-          # Update Supabase
-          curl -X PATCH \
+          UPDATED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          
+          # Create JSON using printf with %q to escape properly
+          printf '{"build_url":"%s","status":"completed","updated_at":"%s"}\n' \
+            "$ARTIFACT_URL" "$UPDATED_AT" > patch_data.json
+          
+          # Show what we're sending
+          echo "📄 JSON payload:"
+          cat patch_data.json
+          
+          # Use the file for the request
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -X PATCH \
             "$SUPABASE_URL/rest/v1/apk_builds?build_id=eq.$BUILD_ID" \
             -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
             -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
             -H "Content-Type: application/json" \
             -H "Prefer: return=minimal" \
-            -d @patch_data.json
+            -d @patch_data.json)
           
-          echo "✅ Supabase updated successfully!"
+          # Check response
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          
+          echo "📊 HTTP Status: $HTTP_CODE"
+          echo "📊 Response: $BODY"
+          
+          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+            echo "✅ Supabase updated successfully!"
+          else
+            echo "❌ Supabase update failed with status: $HTTP_CODE"
+            exit 1
+          fi
 
       - name: Notify build result
         if: always()
