@@ -7,6 +7,16 @@ const ALLOWED_ORIGINS = [
   "https://growhaz.in",
 ];
 
+const isAllowedDevOrigin = (origin: string, host: string) => {
+  if (!origin) return false;
+  if (host === "localhost" || host === "127.0.0.1" || host === "0.0.0.0") {
+    return origin.startsWith("http://localhost:") ||
+      origin.startsWith("http://127.0.0.1:") ||
+      origin.startsWith("http://0.0.0.0:");
+  }
+  return false;
+};
+
 const buildCorsHeaders = (req: Request) => {
   const origin = req.headers.get("origin") || "";
   const requestedHeaders = req.headers.get("access-control-request-headers");
@@ -14,6 +24,7 @@ const buildCorsHeaders = (req: Request) => {
   // Allow growhaz.com / growhaz.in (with or without www) and Lovable preview subdomains
   const isAllowed =
     ALLOWED_ORIGINS.includes(origin) ||
+    isAllowedDevOrigin(origin, host) ||
     host.endsWith(".lovable.app") ||
     host.endsWith(".lovableproject.com");
   return {
