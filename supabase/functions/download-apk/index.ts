@@ -16,6 +16,7 @@ const isAllowedHost = (host: string) =>
 
 const corsHeaders = (req: Request) => {
   const origin = req.headers.get("origin") || "";
+  const requestedHeaders = req.headers.get("access-control-request-headers");
   let originHost = "";
   try { originHost = new URL(origin).hostname; } catch {}
   const allow = origin && isAllowedHost(originHost) ? origin : "https://www.growhaz.com";
@@ -23,7 +24,9 @@ const corsHeaders = (req: Request) => {
     "Access-Control-Allow-Origin": allow,
     "Vary": "Origin",
     "Access-Control-Allow-Headers":
-      "authorization, x-client-info, apikey, content-type, x-api-key",
+      requestedHeaders || "authorization, x-client-info, apikey, content-type, x-api-key, x-supabase-api-version",
+    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Max-Age": "86400",
   } as Record<string, string>;
 };
 
@@ -31,7 +34,7 @@ Deno.serve(async (req) => {
   const cors = corsHeaders(req);
 
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: cors });
+    return new Response("ok", { status: 200, headers: cors });
   }
 
   // Gate access by Origin (XHR/fetch) OR Referer (direct browser nav from window.open)

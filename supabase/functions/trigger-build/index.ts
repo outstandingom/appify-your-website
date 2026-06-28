@@ -9,6 +9,7 @@ const ALLOWED_ORIGINS = [
 
 const buildCorsHeaders = (req: Request) => {
   const origin = req.headers.get("origin") || "";
+  const requestedHeaders = req.headers.get("access-control-request-headers");
   const host = (() => { try { return new URL(origin).hostname; } catch { return ""; } })();
   // Allow growhaz.com / growhaz.in (with or without www) and Lovable preview subdomains
   const isAllowed =
@@ -19,8 +20,9 @@ const buildCorsHeaders = (req: Request) => {
     "Access-Control-Allow-Origin": isAllowed ? origin : "https://www.growhaz.com",
     "Vary": "Origin",
     "Access-Control-Allow-Headers":
-      "authorization, x-client-info, apikey, content-type, x-api-key",
+      requestedHeaders || "authorization, x-client-info, apikey, content-type, x-api-key, x-supabase-api-version",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Max-Age": "86400",
     "_allowed": isAllowed ? "1" : "0",
   } as Record<string, string>;
 };
@@ -41,7 +43,7 @@ Deno.serve(async (req) => {
   delete corsHeaders["_allowed"];
 
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response("ok", { status: 200, headers: corsHeaders });
   }
 
   // Allow server-to-server API calls (no Origin header) with a valid API key
