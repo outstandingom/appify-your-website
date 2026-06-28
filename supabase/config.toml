@@ -1,1 +1,10 @@
 project_id = "hkigsjwppfbtkuqhaxsp"
+
+[functions.trigger-build]
+verify_jwt = false
+
+[functions.build-callback]
+verify_jwt = false
+
+[functions.download-apk]
+verify_jwt = false
