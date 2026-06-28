@@ -24,6 +24,9 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Install jq
+        run: brew install jq
+
       - name: Generate iOS Xcode project
         run: python3 ios_orchestrator.py
 
@@ -60,11 +63,60 @@ jobs:
           ls -la ../out
 
       - name: Upload artifact to GitHub
+        id: upload
         uses: actions/upload-artifact@v4
         with:
           name: app-build-${{ env.BUILD_ID }}
           path: out/*
           retention-days: 7
+
+      - name: Update Supabase with artifact URL
+        if: success()
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          BUILD_ID: ${{ env.BUILD_ID }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          echo "🔍 Getting artifact URL..."
+          
+          # Get artifact URL using GitHub API
+          ARTIFACT_URL=$(curl -s \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/${REPO}/actions/runs/${RUN_ID}/artifacts" \
+            | jq -r '.artifacts[0].archive_download_url')
+          
+          echo "📦 Artifact URL: $ARTIFACT_URL"
+          
+          if [ -z "$ARTIFACT_URL" ] || [ "$ARTIFACT_URL" = "null" ]; then
+            echo "❌ No artifact URL found"
+            exit 1
+          fi
+          
+          # Create JSON payload using a file (avoids escaping issues)
+          cat > patch_data.json <<EOF
+          {
+            "build_url": "$ARTIFACT_URL",
+            "status": "completed",
+            "updated_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+          
+          echo "📤 Updating Supabase with artifact URL..."
+          
+          # Update Supabase
+          curl -X PATCH \
+            "$SUPABASE_URL/rest/v1/apk_builds?build_id=eq.$BUILD_ID" \
+            -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Content-Type: application/json" \
+            -H "Prefer: return=minimal" \
+            -d @patch_data.json
+          
+          echo "✅ Supabase updated successfully!"
 
       - name: Notify build result
         if: always()
