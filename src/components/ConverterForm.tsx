@@ -159,22 +159,40 @@ const ConverterForm = () => {
     }
   };
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (!buildId) {
       setErrorMsg("No build ID available for download");
       return;
     }
     
-    const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-    if (!projectId) {
-      console.error("VITE_SUPABASE_PROJECT_ID is not set");
-      setErrorMsg("Download configuration error. Please contact support.");
-      return;
+    try {
+      const { data: build, error } = await supabase
+        .from('apk_builds')
+        .select('storage_path, file_name, app_name, build_aab, platform')
+        .eq('id', buildId)
+        .single();
+
+      if (error || !build) throw new Error("Could not find build details");
+
+      const preferredExt = build.platform === "ios" ? "ipa" : build.build_aab ? "aab" : "apk";
+      const path = build.storage_path || `${buildId}/app.${preferredExt}`;
+      const safeName = String(build.app_name || "app").replace(/[^a-z0-9-_]+/gi, "_");
+      const fileName = build.file_name || `${safeName}.${preferredExt}`;
+
+      const { data, error: urlError } = await supabase.storage
+        .from("app-builds")
+        .createSignedUrl(path, 3600, { download: fileName });
+
+      if (urlError || !data?.signedUrl) {
+        throw new Error("Failed to generate download link. The file might not be in storage.");
+      }
+
+      window.location.href = data.signedUrl;
+    } catch (err: any) {
+      console.error("Download error:", err);
+      setErrorMsg(err.message || "Failed to download the file");
+      setStep("error");
     }
-    
-    const downloadUrl = `https://${projectId}.supabase.co/functions/v1/download-apk?build_id=${buildId}`;
-    console.log("📥 Download URL:", downloadUrl);
-    window.open(downloadUrl, "_blank");
   };
 
   const handleReset = () => {
