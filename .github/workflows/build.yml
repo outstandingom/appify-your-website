@@ -245,9 +245,12 @@ jobs:
           if [ -z "$SUPABASE_URL" ] || [ "$SUPABASE_URL" = "null" ]; then
             echo "⚠️ SUPABASE_URL is missing. Skipping upload."
           else
+            # Clean JWT to prevent 'Invalid Compact JWS' from trailing newlines/spaces
+            CLEAN_KEY=$(echo "$SUPABASE_SERVICE_KEY" | tr -d '[:space:]')
+            
             echo "Uploading out/app.${EXT} ($(du -sh out/app.${EXT} | cut -f1)) to Supabase Storage..."
             HTTP_CODE=$(curl -X POST "$SUPABASE_URL/storage/v1/object/app-builds/${BUILD_ID}/app.${EXT}" \
-                 -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
+                 -H "Authorization: Bearer $CLEAN_KEY" \
                  -H "Content-Type: application/octet-stream" \
                  -H "x-upsert: true" \
                  --data-binary "@out/app.${EXT}" \
@@ -262,8 +265,8 @@ jobs:
             fi
           fi
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_URL: ${{ fromJson(needs.prepare.outputs.app_config).supabase_url || secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ fromJson(needs.prepare.outputs.app_config).supabase_service_key || secrets.SUPABASE_SERVICE_ROLE_KEY }}
 
       - name: Notify build result
         if: always()
@@ -354,9 +357,12 @@ jobs:
           if [ -z "$SUPABASE_URL" ] || [ "$SUPABASE_URL" = "null" ]; then
             echo "⚠️ SUPABASE_URL is missing. Skipping upload."
           else
+            # Clean JWT to prevent 'Invalid Compact JWS' from trailing newlines/spaces
+            CLEAN_KEY=$(echo "$SUPABASE_SERVICE_KEY" | tr -d '[:space:]')
+            
             echo "Uploading out/app.ipa ($(du -sh out/app.ipa | cut -f1)) to Supabase Storage..."
             HTTP_CODE=$(curl -X POST "$SUPABASE_URL/storage/v1/object/app-builds/${BUILD_ID}/app.ipa" \
-                 -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
+                 -H "Authorization: Bearer $CLEAN_KEY" \
                  -H "Content-Type: application/octet-stream" \
                  -H "x-upsert: true" \
                  --data-binary "@out/app.ipa" \
@@ -371,8 +377,8 @@ jobs:
             fi
           fi
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_URL: ${{ fromJson(needs.prepare.outputs.app_config).supabase_url || secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ fromJson(needs.prepare.outputs.app_config).supabase_service_key || secrets.SUPABASE_SERVICE_ROLE_KEY }}
 
       - name: Notify build result
         if: always()
