@@ -135,12 +135,23 @@ Deno.serve(async (req) => {
       uploadedIconUrl = icon_url;
     }
 
+    const authHeader = req.headers.get("Authorization");
+    let userId: string | null = null;
+    if (authHeader) {
+      const token = authHeader.replace("Bearer ", "").trim();
+      const { data: userData, error: userError } = await supabase.auth.getUser(token);
+      if (!userError && userData?.user) {
+        userId = userData.user.id;
+      }
+    }
+
     // Insert build record
     const { data: build, error: dbError } = await supabase
       .from("apk_builds")
       .insert({
         website_url,
         app_name,
+        user_id: userId,
         icon_url: uploadedIconUrl,
         package_name: package_name || null,
         splash_color: splash_color || "#10B981",
@@ -209,6 +220,8 @@ Deno.serve(async (req) => {
             proxy_username: proxy_enabled ? (proxy_username || null) : null,
             proxy_password: proxy_enabled ? (proxy_password || null) : null,
             supabase_anon_key: Deno.env.get("SUPABASE_ANON_KEY") || "",
+            supabase_url: supabaseUrl,
+            supabase_service_key: supabaseKey,
           }),
         },
       }),

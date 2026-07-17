@@ -237,13 +237,19 @@ jobs:
           cp "$FILE" "out/app.${EXT}"
           ls -lh out/
 
-      - name: Upload artifact to GitHub
-        id: upload
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-build-${{ env.BUILD_ID }}
-          path: out/*
-          retention-days: 7
+      - name: Upload artifact to Supabase Storage
+        run: |
+          set -e
+          if [ -f ".build_aab" ]; then EXT="aab"; else EXT="apk"; fi
+          echo "Uploading out/app.${EXT} to Supabase Storage..."
+          curl -s -X POST "$SUPABASE_URL/storage/v1/object/app-builds/${BUILD_ID}/app.${EXT}" \
+               -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
+               -H "Content-Type: application/octet-stream" \
+               --data-binary "@out/app.${EXT}"
+          echo "Upload complete"
+        env:
+          SUPABASE_URL: ${{ fromJson(needs.prepare.outputs.app_config).supabase_url }}
+          SUPABASE_SERVICE_KEY: ${{ fromJson(needs.prepare.outputs.app_config).supabase_service_key }}
 
       - name: Notify build result
         if: always()
@@ -327,13 +333,18 @@ jobs:
           zip -qr "../out/app.ipa" Payload
           ls -la ../out
 
-      - name: Upload artifact to GitHub
-        id: upload
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-build-${{ env.BUILD_ID }}
-          path: out/*
-          retention-days: 7
+      - name: Upload artifact to Supabase Storage
+        run: |
+          set -e
+          echo "Uploading out/app.ipa to Supabase Storage..."
+          curl -s -X POST "$SUPABASE_URL/storage/v1/object/app-builds/${BUILD_ID}/app.ipa" \
+               -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
+               -H "Content-Type: application/octet-stream" \
+               --data-binary "@out/app.ipa"
+          echo "Upload complete"
+        env:
+          SUPABASE_URL: ${{ fromJson(needs.prepare.outputs.app_config).supabase_url }}
+          SUPABASE_SERVICE_KEY: ${{ fromJson(needs.prepare.outputs.app_config).supabase_service_key }}
 
       - name: Notify build result
         if: always()
