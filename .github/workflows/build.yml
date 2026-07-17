@@ -248,6 +248,12 @@ jobs:
             # Clean JWT to prevent 'Invalid Compact JWS' from trailing newlines/spaces
             CLEAN_KEY=$(echo "$SUPABASE_SERVICE_KEY" | tr -d '[:space:]')
             
+            echo "DEBUG: SUPABASE_URL is $SUPABASE_URL"
+            echo "DEBUG: SUPABASE_SERVICE_KEY length is ${#SUPABASE_SERVICE_KEY}"
+            echo "DEBUG: SUPABASE_SERVICE_KEY first 15 chars is ${SUPABASE_SERVICE_KEY:0:15}"
+            echo "DEBUG: CLEAN_KEY length is ${#CLEAN_KEY}"
+            echo "DEBUG: APP_CONFIG keys are: $(echo '${{ needs.prepare.outputs.app_config }}' | jq 'keys')"
+            
             echo "Uploading out/app.${EXT} ($(du -sh out/app.${EXT} | cut -f1)) to Supabase Storage..."
             HTTP_CODE=$(curl -X POST "$SUPABASE_URL/storage/v1/object/app-builds/${BUILD_ID}/app.${EXT}" \
                  -H "Authorization: Bearer $CLEAN_KEY" \
