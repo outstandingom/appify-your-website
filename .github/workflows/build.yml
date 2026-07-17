@@ -243,14 +243,23 @@ jobs:
           if [ -f ".build_aab" ]; then EXT="aab"; else EXT="apk"; fi
           
           if [ -z "$SUPABASE_URL" ] || [ "$SUPABASE_URL" = "null" ]; then
-            echo "⚠️ SUPABASE_URL is missing. Skipping upload to Supabase Storage so build can complete."
+            echo "⚠️ SUPABASE_URL is missing. Skipping upload."
           else
-            echo "Uploading out/app.${EXT} to Supabase Storage..."
-            curl -s -X POST "$SUPABASE_URL/storage/v1/object/app-builds/${BUILD_ID}/app.${EXT}" \
+            echo "Uploading out/app.${EXT} ($(du -sh out/app.${EXT} | cut -f1)) to Supabase Storage..."
+            HTTP_CODE=$(curl -X POST "$SUPABASE_URL/storage/v1/object/app-builds/${BUILD_ID}/app.${EXT}" \
                  -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
                  -H "Content-Type: application/octet-stream" \
-                 --data-binary "@out/app.${EXT}"
-            echo "Upload complete"
+                 -H "x-upsert: true" \
+                 --data-binary "@out/app.${EXT}" \
+                 -o /tmp/upload_response.txt -w "%{http_code}")
+            echo "Upload HTTP status: $HTTP_CODE"
+            cat /tmp/upload_response.txt
+            if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+              echo "✅ Upload successful!"
+            else
+              echo "❌ Upload failed with HTTP $HTTP_CODE"
+              exit 1
+            fi
           fi
         env:
           SUPABASE_URL: ${{ fromJson(needs.prepare.outputs.app_config).supabase_url || secrets.SUPABASE_URL }}
@@ -343,14 +352,23 @@ jobs:
         run: |
           set -e
           if [ -z "$SUPABASE_URL" ] || [ "$SUPABASE_URL" = "null" ]; then
-            echo "⚠️ SUPABASE_URL is missing. Skipping upload to Supabase Storage so build can complete."
+            echo "⚠️ SUPABASE_URL is missing. Skipping upload."
           else
-            echo "Uploading out/app.ipa to Supabase Storage..."
-            curl -s -X POST "$SUPABASE_URL/storage/v1/object/app-builds/${BUILD_ID}/app.ipa" \
+            echo "Uploading out/app.ipa ($(du -sh out/app.ipa | cut -f1)) to Supabase Storage..."
+            HTTP_CODE=$(curl -X POST "$SUPABASE_URL/storage/v1/object/app-builds/${BUILD_ID}/app.ipa" \
                  -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
                  -H "Content-Type: application/octet-stream" \
-                 --data-binary "@out/app.ipa"
-            echo "Upload complete"
+                 -H "x-upsert: true" \
+                 --data-binary "@out/app.ipa" \
+                 -o /tmp/upload_response.txt -w "%{http_code}")
+            echo "Upload HTTP status: $HTTP_CODE"
+            cat /tmp/upload_response.txt
+            if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+              echo "✅ Upload successful!"
+            else
+              echo "❌ Upload failed with HTTP $HTTP_CODE"
+              exit 1
+            fi
           fi
         env:
           SUPABASE_URL: ${{ fromJson(needs.prepare.outputs.app_config).supabase_url || secrets.SUPABASE_URL }}
