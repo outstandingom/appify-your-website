@@ -256,13 +256,14 @@ jobs:
         run: |
           STATUS="${{ job.status }}"
           RUN_ID="${{ github.run_id }}"
-          echo "📤 Sending callback: build_id=$BUILD_ID status=$STATUS run_id=$RUN_ID"
+          if [ -f ".build_aab" ]; then EXT="aab"; else EXT="apk"; fi
+          echo "📤 Sending callback: build_id=$BUILD_ID status=$STATUS run_id=$RUN_ID ext=$EXT"
           if [ -n "$CALLBACK_URL" ]; then
             echo "🔎 Callback URL resolved to: $CALLBACK_URL"
             HTTP_CODE=$(curl -s -o /tmp/callback_response.txt -w "%{http_code}" -X POST "$CALLBACK_URL" \
               -H "Content-Type: application/json" \
               -H "Authorization: Bearer $ANON_KEY" \
-              -d "{\"build_id\": \"$BUILD_ID\", \"status\": \"$STATUS\", \"run_id\": \"$RUN_ID\"}")
+              -d "{\"build_id\": \"$BUILD_ID\", \"status\": \"$STATUS\", \"run_id\": \"$RUN_ID\", \"ext\": \"$EXT\"}")
             echo "📬 Callback HTTP status: $HTTP_CODE"
             echo "📬 Callback response body:"
             cat /tmp/callback_response.txt
@@ -351,13 +352,14 @@ jobs:
         run: |
           STATUS="${{ job.status }}"
           RUN_ID="${{ github.run_id }}"
-          echo "📤 Sending callback: build_id=$BUILD_ID status=$STATUS run_id=$RUN_ID"
+          EXT="ipa"
+          echo "📤 Sending callback: build_id=$BUILD_ID status=$STATUS run_id=$RUN_ID ext=$EXT"
           if [ -n "$CALLBACK_URL" ]; then
             echo "🔎 Callback URL resolved to: $CALLBACK_URL"
             HTTP_CODE=$(curl -s -o /tmp/callback_response.txt -w "%{http_code}" -X POST "$CALLBACK_URL" \
               -H "Content-Type: application/json" \
               -H "Authorization: Bearer $ANON_KEY" \
-              -d "{\"build_id\": \"$BUILD_ID\", \"status\": \"$STATUS\", \"run_id\": \"$RUN_ID\"}")
+              -d "{\"build_id\": \"$BUILD_ID\", \"status\": \"$STATUS\", \"run_id\": \"$RUN_ID\", \"ext\": \"$EXT\"}")
             echo "📬 Callback HTTP status: $HTTP_CODE"
             echo "📬 Callback response body:"
             cat /tmp/callback_response.txt

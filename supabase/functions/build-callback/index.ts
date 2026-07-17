@@ -12,7 +12,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { build_id, status, run_id, error_message } = await req.json();
+    const { build_id, status, run_id, error_message, ext } = await req.json();
 
     if (!build_id) {
       return new Response(
@@ -27,12 +27,19 @@ Deno.serve(async (req) => {
 
     const buildStatus = status === "success" ? "completed" : "failed";
 
-    await supabase.from("apk_builds").update({
+    const updateData: any = {
       status: buildStatus,
       github_run_id: run_id || null,
       error_message: status !== "success" ? (error_message || `Build ${status}`) : null,
       updated_at: new Date().toISOString(),
-    }).eq("id", build_id);
+    };
+
+    if (ext && buildStatus === "completed") {
+      updateData.storage_path = `${build_id}/app.${ext}`;
+      updateData.file_name = `app.${ext}`;
+    }
+
+    await supabase.from("apk_builds").update(updateData).eq("id", build_id);
 
     return new Response(
       JSON.stringify({ success: true }),
