@@ -262,8 +262,8 @@ jobs:
             fi
           fi
         env:
-          SUPABASE_URL: ${{ fromJson(needs.prepare.outputs.app_config).supabase_url || secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_KEY: ${{ fromJson(needs.prepare.outputs.app_config).supabase_service_key || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
 
       - name: Notify build result
         if: always()
@@ -371,8 +371,8 @@ jobs:
             fi
           fi
         env:
-          SUPABASE_URL: ${{ fromJson(needs.prepare.outputs.app_config).supabase_url || secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_KEY: ${{ fromJson(needs.prepare.outputs.app_config).supabase_service_key || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
 
       - name: Notify build result
         if: always()
