@@ -256,6 +256,7 @@ jobs:
             
             echo "Uploading out/app.${EXT} ($(du -sh out/app.${EXT} | cut -f1)) to Supabase Storage..."
             HTTP_CODE=$(curl -X POST "$SUPABASE_URL/storage/v1/object/app-builds/${BUILD_ID}/app.${EXT}" \
+                 -H "apikey: $CLEAN_KEY" \
                  -H "Authorization: Bearer $CLEAN_KEY" \
                  -H "Content-Type: application/octet-stream" \
                  -H "x-upsert: true" \
@@ -368,6 +369,7 @@ jobs:
             
             echo "Uploading out/app.ipa ($(du -sh out/app.ipa | cut -f1)) to Supabase Storage..."
             HTTP_CODE=$(curl -X POST "$SUPABASE_URL/storage/v1/object/app-builds/${BUILD_ID}/app.ipa" \
+                 -H "apikey: $CLEAN_KEY" \
                  -H "Authorization: Bearer $CLEAN_KEY" \
                  -H "Content-Type: application/octet-stream" \
                  -H "x-upsert: true" \
