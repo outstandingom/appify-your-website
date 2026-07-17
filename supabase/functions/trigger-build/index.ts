@@ -27,7 +27,9 @@ const buildCorsHeaders = (req: Request) => {
     ALLOWED_ORIGINS.includes(origin) ||
     isAllowedDevOrigin(origin, host) ||
     host.endsWith(".lovable.app") ||
-    host.endsWith(".lovableproject.com");
+    host.endsWith(".lovableproject.com") ||
+    host.endsWith(".vercel.app") ||
+    host.includes("growhaz");
   return {
     "Access-Control-Allow-Origin": isAllowed ? origin : "https://www.growhaz.com",
     "Vary": "Origin",
