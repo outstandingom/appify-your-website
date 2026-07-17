@@ -241,15 +241,20 @@ jobs:
         run: |
           set -e
           if [ -f ".build_aab" ]; then EXT="aab"; else EXT="apk"; fi
-          echo "Uploading out/app.${EXT} to Supabase Storage..."
-          curl -s -X POST "$SUPABASE_URL/storage/v1/object/app-builds/${BUILD_ID}/app.${EXT}" \
-               -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
-               -H "Content-Type: application/octet-stream" \
-               --data-binary "@out/app.${EXT}"
-          echo "Upload complete"
+          
+          if [ -z "$SUPABASE_URL" ] || [ "$SUPABASE_URL" = "null" ]; then
+            echo "⚠️ SUPABASE_URL is missing. Skipping upload to Supabase Storage so build can complete."
+          else
+            echo "Uploading out/app.${EXT} to Supabase Storage..."
+            curl -s -X POST "$SUPABASE_URL/storage/v1/object/app-builds/${BUILD_ID}/app.${EXT}" \
+                 -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
+                 -H "Content-Type: application/octet-stream" \
+                 --data-binary "@out/app.${EXT}"
+            echo "Upload complete"
+          fi
         env:
-          SUPABASE_URL: ${{ fromJson(needs.prepare.outputs.app_config).supabase_url }}
-          SUPABASE_SERVICE_KEY: ${{ fromJson(needs.prepare.outputs.app_config).supabase_service_key }}
+          SUPABASE_URL: ${{ fromJson(needs.prepare.outputs.app_config).supabase_url || secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ fromJson(needs.prepare.outputs.app_config).supabase_service_key || secrets.SUPABASE_SERVICE_ROLE_KEY }}
 
       - name: Notify build result
         if: always()
@@ -337,15 +342,19 @@ jobs:
       - name: Upload artifact to Supabase Storage
         run: |
           set -e
-          echo "Uploading out/app.ipa to Supabase Storage..."
-          curl -s -X POST "$SUPABASE_URL/storage/v1/object/app-builds/${BUILD_ID}/app.ipa" \
-               -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
-               -H "Content-Type: application/octet-stream" \
-               --data-binary "@out/app.ipa"
-          echo "Upload complete"
+          if [ -z "$SUPABASE_URL" ] || [ "$SUPABASE_URL" = "null" ]; then
+            echo "⚠️ SUPABASE_URL is missing. Skipping upload to Supabase Storage so build can complete."
+          else
+            echo "Uploading out/app.ipa to Supabase Storage..."
+            curl -s -X POST "$SUPABASE_URL/storage/v1/object/app-builds/${BUILD_ID}/app.ipa" \
+                 -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
+                 -H "Content-Type: application/octet-stream" \
+                 --data-binary "@out/app.ipa"
+            echo "Upload complete"
+          fi
         env:
-          SUPABASE_URL: ${{ fromJson(needs.prepare.outputs.app_config).supabase_url }}
-          SUPABASE_SERVICE_KEY: ${{ fromJson(needs.prepare.outputs.app_config).supabase_service_key }}
+          SUPABASE_URL: ${{ fromJson(needs.prepare.outputs.app_config).supabase_url || secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ fromJson(needs.prepare.outputs.app_config).supabase_service_key || secrets.SUPABASE_SERVICE_ROLE_KEY }}
 
       - name: Notify build result
         if: always()
