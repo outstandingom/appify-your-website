@@ -1,3 +1,3 @@
-# Welcome to your Lovable project
+# Welcome to GROWHAZ
 
-TODO: Document your project here
+
