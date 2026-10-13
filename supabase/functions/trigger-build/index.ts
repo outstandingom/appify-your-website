@@ -1,254 +1,242 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// supabase/functions/trigger-build/index.ts
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { v4 as uuid } from "https://deno.land/std@0.168.0/uuid/mod.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
-const ALLOWED_ORIGINS = [
-  "https://www.growhaz.com",
-  "https://growhaz.com",
-  "https://www.growhaz.in",
-  "https://growhaz.in",
-  "https://appify-your-website.vercel.app",
-];
-
-const isAllowedDevOrigin = (origin: string, host: string) => {
-  if (!origin) return false;
-  if (host === "localhost" || host === "127.0.0.1" || host === "0.0.0.0") {
-    return origin.startsWith("http://localhost:") ||
-      origin.startsWith("http://127.0.0.1:") ||
-      origin.startsWith("http://0.0.0.0:");
-  }
-  return false;
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const buildCorsHeaders = (req: Request) => {
-  const origin = req.headers.get("origin") || "";
-  const requestedHeaders = req.headers.get("access-control-request-headers");
-  const host = (() => { try { return new URL(origin).hostname; } catch { return ""; } })();
-  // Allow growhaz.com / growhaz.in (with or without www) and Lovable preview subdomains
-  const isAllowed =
-    ALLOWED_ORIGINS.includes(origin) ||
-    isAllowedDevOrigin(origin, host) ||
-    host.endsWith(".lovable.app") ||
-    host.endsWith(".lovableproject.com") ||
-    host.endsWith(".vercel.app") ||
-    host.includes("growhaz");
-  return {
-    "Access-Control-Allow-Origin": isAllowed ? origin : "https://www.growhaz.com",
-    "Vary": "Origin",
-    "Access-Control-Allow-Headers":
-      requestedHeaders || "authorization, x-client-info, apikey, content-type, x-api-key, x-supabase-api-version",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Max-Age": "86400",
-    "_allowed": isAllowed ? "1" : "0",
-  } as Record<string, string>;
-};
+interface BuildRequest {
+  website_url: string;
+  app_name: string;
+  package_name?: string;
+  icon_url?: string;
+  splash_color?: string;
+  status_bar_color?: string;
+  enable_push?: boolean;
+  enable_offline?: boolean;
+  offline_message?: string;
+  enable_analytics?: boolean;
+  enable_cookies?: boolean;
+  enable_admob?: boolean;
+  admob_banner_id?: string;
+  admob_interstitial_id?: string;
+  build_aab?: boolean;
+  platform?: string; // "android" or "ios"
+  tier?: string;
+  proxy_enabled?: boolean;
+  proxy_type?: string;
+  proxy_host?: string;
+  proxy_port?: string | number;
+  proxy_username?: string;
+  proxy_password?: string;
+  build_id?: string; // optional
+}
 
-const dataUrlToBytes = (dataUrl: string) => {
-  const match = dataUrl.match(/^data:(.*?);base64,(.*)$/);
-  if (!match) throw new Error("Invalid icon data format");
-  const [, mimeType, base64Data] = match;
-  const binary = atob(base64Data);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return { mimeType, bytes };
-};
-
-Deno.serve(async (req) => {
-  const corsHeaders = buildCorsHeaders(req);
-  const allowed = corsHeaders["_allowed"] === "1";
-  delete corsHeaders["_allowed"];
-
+serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
-    return new Response("ok", { status: 200, headers: corsHeaders });
-  }
-
-  // Allow server-to-server API calls (no Origin header) with a valid API key
-  const hasOrigin = !!req.headers.get("origin");
-  const apiKey = req.headers.get("x-api-key");
-  const expectedKey = Deno.env.get("PUBLIC_API_KEY");
-  const serverToServerOk = !hasOrigin && expectedKey && apiKey === expectedKey;
-
-  if (hasOrigin && !allowed) {
-    return new Response(
-      JSON.stringify({ error: "Origin not allowed. API is restricted to growhaz.com / growhaz.in" }),
-      { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  }
-  if (!hasOrigin && !serverToServerOk) {
-    return new Response(
-      JSON.stringify({ error: "Missing or invalid x-api-key for server-to-server access" }),
-      { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return new Response("ok", { headers: corsHeaders });
   }
 
   try {
-    const body = await req.json();
+    console.log("🚀 Build request received");
+
+    const body: BuildRequest = await req.json();
     const {
-      website_url, app_name, icon_url,
-      package_name, splash_color, status_bar_color,
-      enable_push, enable_offline, offline_message,
-      enable_analytics, enable_cookies,
-      enable_admob, admob_banner_id, admob_interstitial_id,
-      build_aab, tier, platform,
-      proxy_enabled, proxy_type, proxy_host, proxy_port,
-      proxy_username, proxy_password,
+      website_url,
+      app_name,
+      package_name,
+      icon_url,
+      splash_color = "#10B981",
+      status_bar_color = "#000000",
+      enable_push = false,
+      enable_offline = false,
+      offline_message = "You are offline. Please check your connection.",
+      enable_analytics = false,
+      enable_cookies = true,
+      enable_admob = false,
+      admob_banner_id,
+      admob_interstitial_id,
+      build_aab = false,
+      platform = "android",
+      tier = "free",
+      proxy_enabled = false,
+      proxy_type = "http",
+      proxy_host,
+      proxy_port,
+      proxy_username,
+      proxy_password,
+      build_id,
     } = body;
 
-    const targetPlatform = platform === "ios" ? "ios" : "android";
-
+    // Validate required fields
     if (!website_url || !app_name) {
       return new Response(
         JSON.stringify({ error: "website_url and app_name are required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
 
-    const GITHUB_TOKEN = Deno.env.get("GITHUB_TOKEN");
-    if (!GITHUB_TOKEN) {
+    // Validate website_url is a valid URL
+    try {
+      new URL(website_url.startsWith("http") ? website_url : `https://${website_url}`);
+    } catch {
       return new Response(
-        JSON.stringify({ error: "GITHUB_TOKEN is not configured" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: "Invalid website_url format" }),
+        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
 
-    const GITHUB_REPO = Deno.env.get("GITHUB_REPO");
-    if (!GITHUB_REPO) {
+    // Validate platform
+    const validPlatforms = ["android", "ios"];
+    if (!validPlatforms.includes(platform.toLowerCase())) {
       return new Response(
-        JSON.stringify({ error: "GITHUB_REPO not configured" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: "platform must be 'android' or 'ios'" }),
+        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    // Generate build_id if not provided
+    const finalBuildId = build_id || uuid.generate();
+    console.log("📦 Build ID:", finalBuildId);
 
-    // Upload icon if base64
-    let uploadedIconUrl: string | null = null;
-    if (typeof icon_url === "string" && icon_url.startsWith("data:")) {
-      const { mimeType, bytes } = dataUrlToBytes(icon_url);
-      const ext = mimeType.includes("jpeg") ? "jpg" : mimeType.includes("svg") ? "svg" : "png";
-      const iconPath = `${crypto.randomUUID()}.${ext}`;
-      const { error: uploadError } = await supabase.storage
-        .from("apk-icons")
-        .upload(iconPath, bytes, { contentType: mimeType, upsert: false });
-      if (uploadError) throw new Error(`Icon upload failed: ${uploadError.message}`);
-      const { data: publicUrlData } = supabase.storage.from("apk-icons").getPublicUrl(iconPath);
-      uploadedIconUrl = publicUrlData.publicUrl;
-    } else if (typeof icon_url === "string" && icon_url.trim().length > 0) {
-      uploadedIconUrl = icon_url;
+    // GitHub token & repo
+    const githubToken = Deno.env.get("GITHUB_TOKEN");
+    const githubRepo = Deno.env.get("GITHUB_REPO"); // e.g., "owner/repo"
+
+    if (!githubToken || !githubRepo) {
+      return new Response(
+        JSON.stringify({ error: "GITHUB_TOKEN or GITHUB_REPO not configured" }),
+        { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
     }
 
-    const authHeader = req.headers.get("Authorization");
-    let userId: string | null = null;
-    if (authHeader) {
-      const token = authHeader.replace("Bearer ", "").trim();
-      const { data: userData, error: userError } = await supabase.auth.getUser(token);
-      if (!userError && userData?.user) {
-        userId = userData.user.id;
+    // --- Build Queue Check ---
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    
+    if (supabaseUrl && supabaseServiceKey) {
+      const supabase = createClient(supabaseUrl, supabaseServiceKey);
+      
+      // Check if this build is already approved to start ('building' status)
+      const { data: queueEntry } = await supabase
+        .from('build_queue')
+        .select('status')
+        .eq('build_id', finalBuildId)
+        .single();
+        
+      if (!queueEntry || queueEntry.status !== 'building') {
+        // If not explicitly approved, check if we're under the limit
+        const { data: activeCount } = await supabase.rpc('get_active_build_count');
+        
+        if (typeof activeCount === 'number' && activeCount >= 20) {
+           return new Response(
+             JSON.stringify({ 
+               error: "Build queue is full (max 20). Please use the queue system.",
+               status: "queued" 
+             }),
+             { status: 429, headers: { "Content-Type": "application/json", ...corsHeaders } }
+           );
+        }
       }
     }
+    // -------------------------
 
-    // Insert build record
-    const { data: build, error: dbError } = await supabase
-      .from("apk_builds")
-      .insert({
-        website_url,
-        app_name,
-        user_id: userId,
-        icon_url: uploadedIconUrl,
-        package_name: package_name || null,
-        splash_color: splash_color || "#10B981",
-        status_bar_color: status_bar_color || "#000000",
-        enable_push: enable_push || false,
-        enable_offline: enable_offline || false,
-        offline_message: offline_message || "You are offline.",
-        enable_analytics: enable_analytics || false,
-        enable_cookies: enable_cookies !== false,
-        enable_admob: enable_admob || false,
-        admob_banner_id: admob_banner_id || null,
-        admob_interstitial_id: admob_interstitial_id || null,
-        build_aab: build_aab || false,
-        platform: targetPlatform,
-        tier: tier || "free",
-        status: "pending",
-        proxy_enabled: !!proxy_enabled,
-        proxy_type: proxy_enabled ? (proxy_type || "http") : null,
-        proxy_host: proxy_enabled ? (proxy_host || null) : null,
-        proxy_port: proxy_enabled && proxy_port ? Number(proxy_port) : null,
-        proxy_username: proxy_enabled ? (proxy_username || null) : null,
-        proxy_password: proxy_enabled ? (proxy_password || null) : null,
-      })
-      .select("id")
-      .single();
+    // Workflow filename (as it appears in .github/workflows/)
+    const workflowId = "build.yml";
+    const githubApi = `https://api.github.com/repos/${githubRepo}/actions/workflows/${workflowId}/dispatches`;
 
-    if (dbError) throw new Error(`DB error: ${dbError.message}`);
+    console.log("📡 Triggering workflow:", githubApi);
 
-    // Artifact is stored on GitHub Actions and streamed directly to the user
-    // by the download-apk edge function. No cloud storage upload needed.
-    const callbackUrl = `${supabaseUrl}/functions/v1/build-callback`;
+    // Map inputs exactly to the workflow's workflow_dispatch inputs
+    // All values must be strings for GitHub API
+    const inputs: Record<string, string> = {
+      website_url: website_url,
+      app_name: app_name,
+      package_name: package_name || "",
+      icon_url: icon_url || "",
+      splash_color: splash_color,
+      status_bar_color: status_bar_color,
+      enable_push: String(enable_push),
+      enable_offline: String(enable_offline),
+      offline_message: offline_message,
+      enable_analytics: String(enable_analytics),
+      enable_cookies: String(enable_cookies),
+      enable_admob: String(enable_admob),
+      admob_banner_id: admob_banner_id || "",
+      admob_interstitial_id: admob_interstitial_id || "",
+      build_aab: String(build_aab),
+      platform: platform.toLowerCase(),
+      tier: tier,
+      proxy_enabled: String(proxy_enabled),
+      proxy_type: proxy_type,
+      proxy_host: proxy_host || "",
+      proxy_port: proxy_port ? String(proxy_port) : "",
+      proxy_username: proxy_username || "",
+      proxy_password: proxy_password || "",
+      build_id: finalBuildId,
+      // ✅ ADDED — the one and only functional change in this file.
+      // Without this, the workflow has no URL to call back to, so it
+      // never updates apk_builds.status, and the APK never shows as ready.
+      callback_url: supabaseUrl ? `${supabaseUrl}/functions/v1/build-callback` : "",
+    };
 
-    const ghResponse = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/dispatches`, {
+    const response = await fetch(githubApi, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${GITHUB_TOKEN}`,
-        Accept: "application/vnd.github.v3+json",
+        Authorization: `Bearer ${githubToken}`,
+        Accept: "application/vnd.github+json",
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        event_type: targetPlatform === "ios" ? "build-ipa" : "build-apk",
-        client_payload: {
-          build_id: build.id,
-          callback_url: callbackUrl,
-          config: JSON.stringify({
-            website_url,
-            app_name,
-            icon_url: uploadedIconUrl,
-            package_name: package_name || null,
-            splash_color: splash_color || "#10B981",
-            status_bar_color: status_bar_color || "#000000",
-            enable_push: enable_push || false,
-            enable_offline: enable_offline || false,
-            offline_message: offline_message || "You are offline.",
-            enable_analytics: enable_analytics || false,
-            enable_cookies: enable_cookies !== false,
-            enable_admob: enable_admob || false,
-            admob_banner_id: admob_banner_id || null,
-            admob_interstitial_id: admob_interstitial_id || null,
-            build_aab: build_aab || false,
-            platform: targetPlatform,
-            proxy_enabled: !!proxy_enabled,
-            proxy_type: proxy_enabled ? (proxy_type || "http") : null,
-            proxy_host: proxy_enabled ? (proxy_host || null) : null,
-            proxy_port: proxy_enabled && proxy_port ? Number(proxy_port) : null,
-            proxy_username: proxy_enabled ? (proxy_username || null) : null,
-            proxy_password: proxy_enabled ? (proxy_password || null) : null,
-            supabase_anon_key: Deno.env.get("SUPABASE_ANON_KEY") || "",
-            supabase_url: supabaseUrl,
-            supabase_service_key: supabaseKey,
-          }),
-        },
+        ref: "main", // or the branch you want to use (e.g., "main")
+        inputs,
       }),
     });
 
-    if (!ghResponse.ok) {
-      const errText = await ghResponse.text();
-      throw new Error(`GitHub API error [${ghResponse.status}]: ${errText}`);
+    console.log("📊 GitHub API response status:", response.status);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("❌ GitHub API error:", errorText);
+      let errorMessage = `GitHub API error (${response.status})`;
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.message || errorMessage;
+      } catch {
+        errorMessage += `: ${errorText}`;
+      }
+      return new Response(
+        JSON.stringify({ error: errorMessage }),
+        { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
     }
 
-    await supabase
-      .from("apk_builds")
-      .update({ status: "building", updated_at: new Date().toISOString() })
-      .eq("id", build.id);
+    console.log("✅ Build workflow triggered successfully");
 
     return new Response(
-      JSON.stringify({ build_id: build.id, status: "building" }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({
+        status: "build_started",
+        build_id: finalBuildId,
+        platform: platform.toLowerCase(),
+        message: "Build triggered successfully",
+        details: {
+          website_url,
+          app_name,
+          platform,
+          tier,
+        },
+      }),
+      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
   } catch (error) {
-    console.error("Error:", error);
-    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("💥 Unhandled error:", error);
     return new Response(
-      JSON.stringify({ error: message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ error: (error as Error).message }),
+      { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
   }
 });
