@@ -80,12 +80,6 @@ on:
       build_id:
         description: 'Optional build id (used to name the artifact). Auto-generated if empty.'
         type: string
-      # ✅ ADDED — without declaring this input, GitHub silently drops the
-      # callback_url field sent by trigger-build, even if trigger-build sends it.
-      callback_url:
-        description: 'Callback URL for build status'
-        required: false
-        type: string
 
   repository_dispatch:
     types:
@@ -166,9 +160,7 @@ jobs:
                   "proxy_password": inputs.get("proxy_password") or None,
               }
               build_id = inputs.get("build_id") or str(uuid.uuid4())
-              # ✅ CHANGED — was hardcoded to "" before. Now reads the input
-              # declared above, which trigger-build now actually sends.
-              callback_url = inputs.get("callback_url") or ""
+              callback_url = ""
 
           platform = (config.get("platform") or "android").lower()
           if platform not in ("android", "ios"):
