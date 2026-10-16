@@ -40,8 +40,9 @@ PROXY_PORT = config.get("proxy_port")
 PROXY_USER = config.get("proxy_username") or ""
 PROXY_PASS = config.get("proxy_password") or ""
 PROXY_ACTIVE = PROXY_ENABLED and PROXY_HOST and PROXY_PORT
+
 def _java_str(s):
-    return (s or "").replace("\\", "\\\\").replace("\"", "\\\"")
+    return (s or "").replace("\\", "\\\\").replace('"', '\\"')
 
 # Package name
 custom_pkg = config.get("package_name", "")
@@ -74,9 +75,7 @@ def write_file(path, content):
 def module_a_project_setup():
     print("\n── Module A: Project Structure ──")
 
-    cleanup_paths = [
-        "app/src/main/java",
-    ]
+    cleanup_paths = ["app/src/main/java"]
     for path in cleanup_paths:
         if os.path.isdir(path):
             shutil.rmtree(path)
@@ -102,7 +101,6 @@ def module_a_project_setup():
     for d in dirs:
         os.makedirs(d, exist_ok=True)
 
-    # settings.gradle
     write_file("settings.gradle", """pluginManagement {
     repositories {
         google()
@@ -121,20 +119,18 @@ rootProject.name = "WebToAPK"
 include ':app'
 """)
 
-    # root build.gradle
     write_file("build.gradle", """plugins {
     id 'com.android.application' version '8.2.0' apply false
 }
 """)
 
-    # gradle.properties
     write_file("gradle.properties", """android.useAndroidX=true
 org.gradle.jvmargs=-Xmx2048m
 """)
 
 
 # ═══════════════════════════════════════════════════════════════
-# MODULE B: App build.gradle (The Gradle Fix)
+# MODULE B: App build.gradle
 # ═══════════════════════════════════════════════════════════════
 
 def module_b_gradle():
@@ -175,7 +171,6 @@ android {{
         targetCompatibility JavaVersion.VERSION_17
     }}
 
-    // Fix: Prevent duplicate class errors between kotlin-stdlib variants
     configurations.all {{
         resolutionStrategy {{
             force 'org.jetbrains.kotlin:kotlin-stdlib:1.8.22'
@@ -205,26 +200,20 @@ def module_c_manifest():
     permissions = [
         '<uses-permission android:name="android.permission.INTERNET" />',
         '<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />',
-        # Camera
         '<uses-permission android:name="android.permission.CAMERA" />',
         '<uses-feature android:name="android.hardware.camera" android:required="false" />',
-        # Location
         '<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />',
         '<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />',
-        # Storage
         '<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />',
         '<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />',
         '<uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />',
         '<uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />',
         '<uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />',
         '<uses-permission android:name="android.permission.MANAGE_DOCUMENTS" />',
-        # Microphone
         '<uses-permission android:name="android.permission.RECORD_AUDIO" />',
         '<uses-feature android:name="android.hardware.microphone" android:required="false" />',
-        # Phone
         '<uses-permission android:name="android.permission.CALL_PHONE" />',
         '<uses-feature android:name="android.hardware.telephony" android:required="false" />',
-        # Vibrate
         '<uses-permission android:name="android.permission.VIBRATE" />',
     ]
 
@@ -282,7 +271,6 @@ def module_c_manifest():
 </manifest>
 """)
 
-    # Network security config
     write_file("app/src/main/res/xml/network_security_config.xml", """<?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
     <base-config cleartextTrafficPermitted="true">
@@ -293,7 +281,6 @@ def module_c_manifest():
 </network-security-config>
 """)
 
-    # File provider paths
     write_file("app/src/main/res/xml/file_paths.xml", """<?xml version="1.0" encoding="utf-8"?>
 <paths>
     <cache-path name="cache" path="." />
@@ -304,7 +291,6 @@ def module_c_manifest():
 </paths>
 """)
 
-    # colors.xml
     write_file("app/src/main/res/values/colors.xml", f"""<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="splash_color">{SPLASH_COLOR}</color>
@@ -312,7 +298,6 @@ def module_c_manifest():
 </resources>
 """)
 
-    # styles.xml
     write_file("app/src/main/res/values/styles.xml", f"""<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="AppTheme" parent="Theme.AppCompat.NoActionBar">
@@ -346,11 +331,8 @@ def module_d_icon_splash():
             print(f"  ⚠ Icon download failed: {e}")
 
     sizes = {
-        "mipmap-mdpi": 48,
-        "mipmap-hdpi": 72,
-        "mipmap-xhdpi": 96,
-        "mipmap-xxhdpi": 144,
-        "mipmap-xxxhdpi": 192,
+        "mipmap-mdpi": 48, "mipmap-hdpi": 72, "mipmap-xhdpi": 96,
+        "mipmap-xxhdpi": 144, "mipmap-xxxhdpi": 192,
     }
 
     if has_icon:
@@ -362,7 +344,6 @@ def module_d_icon_splash():
                 "-background", "none", "-gravity", "center",
                 "-extent", f"{size}x{size}", out
             ], check=True)
-        # Splash logo
         subprocess.run([
             "convert", "/tmp/icon_original.png",
             "-resize", "288x288", "-background", "none",
@@ -382,7 +363,6 @@ def module_d_icon_splash():
             ], check=True)
         print("  ✓ Generated default letter icon")
 
-    # Splash drawable
     if has_icon:
         write_file("app/src/main/res/drawable/splash_background.xml", f"""<?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
@@ -392,9 +372,7 @@ def module_d_icon_splash():
         </shape>
     </item>
     <item android:gravity="center">
-        <bitmap
-            android:gravity="center"
-            android:src="@drawable/splash_logo" />
+        <bitmap android:gravity="center" android:src="@drawable/splash_logo" />
     </item>
 </layer-list>
 """)
@@ -487,9 +465,8 @@ def module_f_offline():
     button {{
       padding: 14px 32px; background: {SPLASH_COLOR}; color: white;
       border: none; border-radius: 12px; font-size: 16px; font-weight: 600;
-      cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      cursor: pointer;
     }}
-    button:active {{ transform: scale(0.97); }}
   </style>
 </head>
 <body>
@@ -534,7 +511,7 @@ public class SplashActivity extends AppCompatActivity {{
 
 
 # ═══════════════════════════════════════════════════════════════
-# MODULE H: MainActivity (full-featured)
+# MODULE H: MainActivity  ← THE FIX IS HERE
 # ═══════════════════════════════════════════════════════════════
 
 def module_h_main_activity():
@@ -557,7 +534,7 @@ import com.google.android.gms.ads.AdView;"""
 
     enable_offline_java = "true" if ENABLE_OFFLINE else "false"
 
-    # ── Proxy (custom IP) injection ──
+    # ── Proxy injection ──
     proxy_imports = ""
     proxy_setup_call = ""
     proxy_method = "    private void setupProxy() { /* disabled */ }"
@@ -573,9 +550,6 @@ import android.webkit.HttpAuthHandler;"""
         proxy_user_j = _java_str(PROXY_USER)
         proxy_pass_j = _java_str(PROXY_PASS)
         proxy_scheme = "https" if PROXY_TYPE == "https" else "http"
-        # Android WebView ProxyController only supports HTTP/HTTPS proxies.
-        # For SOCKS5 we still register the host as HTTP so user is alerted via build
-        # log; recommend HTTP/HTTPS proxy on the UI.
         proxy_method = f"""    private void setupProxy() {{
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) {{
             android.util.Log.w("Proxy", "WebView proxy override unsupported on this device");
@@ -602,6 +576,167 @@ import android.webkit.HttpAuthHandler;"""
                 handler.proceed("{proxy_user_j}", "{proxy_pass_j}");
             }}
 """
+
+    # ══════════════════════════════════════════════════════════════
+    # THE FIX: Push Notification Bridge
+    #
+    # Problem: WebView strips window.Notification → "Notification
+    #          is not defined" crash.
+    #
+    # Solution: Build these as plain Python strings (not f-strings)
+    # so Java/JS braces require no extra escaping, then insert them
+    # into the outer f-string via {variable_name} substitution.
+    #
+    # Flow:
+    #   website JS calls new Notification('title', {body:'msg'})
+    #       ↓  (our polyfill intercepts)
+    #   AndroidBridge.showNotification(title, body, icon)
+    #       ↓  (@JavascriptInterface)
+    #   NotificationBridge.showNotification()
+    #       ↓
+    #   Native NotificationManager → device notification ✅
+    # ══════════════════════════════════════════════════════════════
+    notif_imports          = ""
+    notif_bridge_setup     = ""
+    notif_page_finished_extra = ""
+    notif_methods          = ""
+    notif_permission_body  = ""
+
+    if ENABLE_PUSH:
+
+        notif_imports = (
+            "import android.app.NotificationChannel;\n"
+            "import android.app.NotificationManager;\n"
+            "import android.app.PendingIntent;\n"
+            "import android.webkit.JavascriptInterface;\n"
+            "import androidx.core.app.NotificationCompat;"
+        )
+
+        # Added to onCreate — registers the JS bridge + creates channel
+        notif_bridge_setup = (
+            "\n        // ── Push Notification Bridge ──\n"
+            "        // Register JS interface so website can call AndroidBridge.showNotification()\n"
+            "        webView.addJavascriptInterface(new NotificationBridge(), \"AndroidBridge\");\n"
+            "        setupNotificationChannel();\n"
+            "        // Android 13+ requires explicit runtime permission for notifications\n"
+            "        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {\n"
+            "            if (!isPermissionGranted(Manifest.permission.POST_NOTIFICATIONS)) {\n"
+            "                ActivityCompat.requestPermissions(this,\n"
+            "                    new String[]{Manifest.permission.POST_NOTIFICATIONS},\n"
+            "                    NOTIFICATION_PERMISSION_CODE);\n"
+            "            }\n"
+            "        }"
+        )
+
+        # Injected into WebView on every page load
+        notif_page_finished_extra = "                injectNotificationPolyfill();\n"
+
+        # Handles runtime permission result
+        notif_permission_body = (
+            "\n"
+            "                if (areAllPermissionsGranted(grantResults)) {\n"
+            "                    injectNotificationPolyfill();\n"
+            "                }"
+        )
+
+        app_safe = APP_NAME.replace("\\", "\\\\").replace('"', '\\"')
+
+        # setupNotificationChannel — creates Android O+ notification channel
+        _channel = (
+            "\n"
+            "    // ═══════════════════════════════\n"
+            "    // PUSH NOTIFICATION MODULE\n"
+            "    // ═══════════════════════════════\n"
+            "    private void setupNotificationChannel() {\n"
+            "        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {\n"
+            f'            NotificationChannel ch = new NotificationChannel(\n'
+            f'                "web_push_channel", "{app_safe} Notifications",\n'
+            "                NotificationManager.IMPORTANCE_HIGH);\n"
+            f'            ch.setDescription("Push notifications from {app_safe}");\n'
+            "            ch.enableVibration(true);\n"
+            "            NotificationManager mgr = getSystemService(NotificationManager.class);\n"
+            "            if (mgr != null) mgr.createNotificationChannel(ch);\n"
+            "        }\n"
+            "    }\n"
+        )
+
+        # injectNotificationPolyfill — overrides window.Notification with our bridge
+        # JS single-quotes inside Java string literals are escaped as \'
+        _inject = (
+            "\n"
+            "    private void injectNotificationPolyfill() {\n"
+            "        String js =\n"
+            '            "(function() {" +\n'
+            '            "  if (typeof AndroidBridge !== \'undefined\') {" +\n'
+            '            "    var _N = function(title, opts) {" +\n'
+            '            "      var body = (opts && opts.body) ? opts.body : \'\';" +\n'
+            '            "      var icon = (opts && opts.icon) ? opts.icon : \'\';" +\n'
+            '            "      AndroidBridge.showNotification(title, body, icon);" +\n'
+            '            "      this.close = function() {};" +\n'
+            '            "    };" +\n'
+            '            "    _N.permission = \'granted\';" +\n'
+            '            "    _N.requestPermission = function(cb) {" +\n'
+            '            "      if (cb) cb(\'granted\');" +\n'
+            '            "      return Promise.resolve(\'granted\');" +\n'
+            '            "    };" +\n'
+            '            "    try {" +\n'
+            '            "      Object.defineProperty(window, \'Notification\', {" +\n'
+            '            "        value: _N, writable: true, configurable: true" +\n'
+            '            "      });" +\n'
+            '            "    } catch(e) {" +\n'
+            '            "      try { window.Notification = _N; } catch(e2) {}" +\n'
+            '            "    }" +\n'
+            '            "  }" +\n'
+            '            "})();";\n'
+            "        webView.evaluateJavascript(js, null);\n"
+            "    }\n"
+        )
+
+        # NotificationBridge inner class — called by JS polyfill
+        _bridge = (
+            "\n"
+            "    private int notifId = 1000;\n"
+            "\n"
+            "    public class NotificationBridge {\n"
+            "\n"
+            "        @JavascriptInterface\n"
+            "        public void showNotification(final String title, final String body, String icon) {\n"
+            "            runOnUiThread(() -> {\n"
+            "                try {\n"
+            "                    android.content.Intent i = new android.content.Intent(\n"
+            "                        MainActivity.this, MainActivity.class);\n"
+            "                    i.setFlags(android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP);\n"
+            "                    PendingIntent pi = PendingIntent.getActivity(\n"
+            "                        MainActivity.this, notifId, i,\n"
+            "                        PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);\n"
+            "                    NotificationCompat.Builder nb =\n"
+            '                        new NotificationCompat.Builder(MainActivity.this, "web_push_channel")\n'
+            "                            .setSmallIcon(android.R.drawable.ic_dialog_info)\n"
+            "                            .setContentTitle(title)\n"
+            "                            .setContentText(body)\n"
+            "                            .setStyle(new NotificationCompat.BigTextStyle().bigText(body))\n"
+            "                            .setAutoCancel(true)\n"
+            "                            .setPriority(NotificationCompat.PRIORITY_HIGH)\n"
+            "                            .setDefaults(NotificationCompat.DEFAULT_ALL)\n"
+            "                            .setContentIntent(pi);\n"
+            "                    NotificationManager nm = (NotificationManager)\n"
+            "                        MainActivity.this.getSystemService(NOTIFICATION_SERVICE);\n"
+            "                    if (nm != null) nm.notify(notifId++, nb.build());\n"
+            "                } catch (Exception e) {\n"
+            '                    android.util.Log.e("WebPush", "Notification error", e);\n'
+            "                }\n"
+            "            });\n"
+            "        }\n"
+            "\n"
+            "        @JavascriptInterface\n"
+            '        public String getPermission() { return "granted"; }\n'
+            "\n"
+            "        @JavascriptInterface\n"
+            "        public void requestPermission() { /* handled natively at app launch */ }\n"
+            "    }\n"
+        )
+
+        notif_methods = _channel + _inject + _bridge
 
     write_file(f"app/src/main/java/{PACKAGE_PATH}/MainActivity.java", f"""package {PACKAGE_NAME};
 
@@ -641,6 +776,7 @@ import java.util.ArrayList;
 import java.util.List;
 {admob_imports}
 {proxy_imports}
+{notif_imports}
 
 public class MainActivity extends AppCompatActivity {{
     private WebView webView;
@@ -652,10 +788,10 @@ public class MainActivity extends AppCompatActivity {{
     private PermissionRequest pendingWebPermissionRequest;
     private Uri cameraImageUri;
 
-    private static final int FILE_CHOOSER_REQUEST = 1001;
+    private static final int FILE_CHOOSER_REQUEST        = 1001;
     private static final int CAMERA_PERMISSION_FOR_UPLOAD = 2001;
-    private static final int LOCATION_PERMISSION_CODE = 2002;
-    private static final int WEB_CAMERA_PERMISSION_CODE = 2003;
+    private static final int LOCATION_PERMISSION_CODE    = 2002;
+    private static final int WEB_CAMERA_PERMISSION_CODE  = 2003;
     private static final int NOTIFICATION_PERMISSION_CODE = 3001;
 
     @Override
@@ -663,7 +799,7 @@ public class MainActivity extends AppCompatActivity {{
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        webView = findViewById(R.id.webview);
+        webView      = findViewById(R.id.webview);
         swipeRefresh = findViewById(R.id.swipe_refresh);
 
         setupCookies();
@@ -676,6 +812,7 @@ public class MainActivity extends AppCompatActivity {{
 
         setupAdMob();
 {proxy_setup_call}
+{notif_bridge_setup}
 
         if (isOnline()) {{
             webView.loadUrl("{WEBSITE_URL}");
@@ -694,25 +831,19 @@ public class MainActivity extends AppCompatActivity {{
     }}
 
     private boolean areAllPermissionsGranted(int[] grantResults) {{
-        if (grantResults.length == 0) {{
-            return false;
-        }}
-        for (int result : grantResults) {{
-            if (result != PackageManager.PERMISSION_GRANTED) {{
-                return false;
-            }}
+        if (grantResults.length == 0) return false;
+        for (int r : grantResults) {{
+            if (r != PackageManager.PERMISSION_GRANTED) return false;
         }}
         return true;
     }}
 
     private boolean canGrantWebPermissionRequest(PermissionRequest request) {{
         for (String resource : request.getResources()) {{
-            if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource) && !isPermissionGranted(Manifest.permission.CAMERA)) {{
-                return false;
-            }}
-            if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource) && !isPermissionGranted(Manifest.permission.RECORD_AUDIO)) {{
-                return false;
-            }}
+            if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)
+                    && !isPermissionGranted(Manifest.permission.CAMERA)) return false;
+            if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)
+                    && !isPermissionGranted(Manifest.permission.RECORD_AUDIO)) return false;
         }}
         return true;
     }}
@@ -730,31 +861,31 @@ public class MainActivity extends AppCompatActivity {{
     // COOKIE MODULE
     // ═══════════════════════════════
     private void setupCookies() {{
-        CookieManager cookieManager = CookieManager.getInstance();
-        cookieManager.setAcceptCookie(true);
-        cookieManager.setAcceptThirdPartyCookies(webView, true);
-        cookieManager.flush();
+        CookieManager cm = CookieManager.getInstance();
+        cm.setAcceptCookie(true);
+        cm.setAcceptThirdPartyCookies(webView, true);
+        cm.flush();
     }}
 
     // ═══════════════════════════════
     // WEBVIEW SETTINGS MODULE
     // ═══════════════════════════════
     private void setupWebViewSettings() {{
-        WebSettings settings = webView.getSettings();
-        settings.setJavaScriptEnabled(true);
-        settings.setDomStorageEnabled(true);
-        settings.setLoadWithOverviewMode(true);
-        settings.setUseWideViewPort(true);
-        settings.setCacheMode(WebSettings.LOAD_DEFAULT);
-        settings.setAllowFileAccess(true);
-        settings.setAllowContentAccess(true);
-        settings.setMediaPlaybackRequiresUserGesture(false);
-        settings.setDatabaseEnabled(true);
-        settings.setJavaScriptCanOpenWindowsAutomatically(true);
-        settings.setSupportMultipleWindows(false);
-        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-        settings.setGeolocationEnabled(true);
-        settings.setUserAgentString(settings.getUserAgentString() + " {APP_NAME}App/1.0");
+        WebSettings s = webView.getSettings();
+        s.setJavaScriptEnabled(true);
+        s.setDomStorageEnabled(true);
+        s.setLoadWithOverviewMode(true);
+        s.setUseWideViewPort(true);
+        s.setCacheMode(WebSettings.LOAD_DEFAULT);
+        s.setAllowFileAccess(true);
+        s.setAllowContentAccess(true);
+        s.setMediaPlaybackRequiresUserGesture(false);
+        s.setDatabaseEnabled(true);
+        s.setJavaScriptCanOpenWindowsAutomatically(true);
+        s.setSupportMultipleWindows(false);
+        s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+        s.setGeolocationEnabled(true);
+        s.setUserAgentString(s.getUserAgentString() + " {APP_NAME}App/1.0");
     }}
 
     // ═══════════════════════════════
@@ -767,12 +898,12 @@ public class MainActivity extends AppCompatActivity {{
                 clearFileUploadCallback();
                 fileUploadCallback = callback;
                 pendingFileChooserParams = params;
-
-                if (params != null && params.isCaptureEnabled() && !isPermissionGranted(Manifest.permission.CAMERA)) {{
-                    ActivityCompat.requestPermissions(MainActivity.this, new String[]{{Manifest.permission.CAMERA}}, CAMERA_PERMISSION_FOR_UPLOAD);
+                if (params != null && params.isCaptureEnabled()
+                        && !isPermissionGranted(Manifest.permission.CAMERA)) {{
+                    ActivityCompat.requestPermissions(MainActivity.this,
+                        new String[]{{Manifest.permission.CAMERA}}, CAMERA_PERMISSION_FOR_UPLOAD);
                     return true;
                 }}
-
                 launchFileChooser();
                 return true;
             }}
@@ -782,19 +913,18 @@ public class MainActivity extends AppCompatActivity {{
                 runOnUiThread(() -> {{
                     String[] resources = request.getResources();
                     List<String> nativePerms = new ArrayList<>();
-
                     for (String resource : resources) {{
-                        if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource) && !isPermissionGranted(Manifest.permission.CAMERA)) {{
+                        if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)
+                                && !isPermissionGranted(Manifest.permission.CAMERA))
                             nativePerms.add(Manifest.permission.CAMERA);
-                        }}
-                        if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource) && !isPermissionGranted(Manifest.permission.RECORD_AUDIO)) {{
+                        if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)
+                                && !isPermissionGranted(Manifest.permission.RECORD_AUDIO))
                             nativePerms.add(Manifest.permission.RECORD_AUDIO);
-                        }}
                     }}
-
                     if (!nativePerms.isEmpty()) {{
                         pendingWebPermissionRequest = request;
-                        ActivityCompat.requestPermissions(MainActivity.this, nativePerms.toArray(new String[0]), WEB_CAMERA_PERMISSION_CODE);
+                        ActivityCompat.requestPermissions(MainActivity.this,
+                            nativePerms.toArray(new String[0]), WEB_CAMERA_PERMISSION_CODE);
                     }} else if (canGrantWebPermissionRequest(request)) {{
                         request.grant(resources);
                     }} else {{
@@ -805,9 +935,7 @@ public class MainActivity extends AppCompatActivity {{
 
             @Override
             public void onPermissionRequestCanceled(PermissionRequest request) {{
-                if (pendingWebPermissionRequest == request) {{
-                    pendingWebPermissionRequest = null;
-                }}
+                if (pendingWebPermissionRequest == request) pendingWebPermissionRequest = null;
             }}
 
             @Override
@@ -815,19 +943,18 @@ public class MainActivity extends AppCompatActivity {{
                 if (hasLocationPermission()) {{
                     callback.invoke(origin, true, false);
                 }} else {{
-                    geoOrigin = origin;
+                    geoOrigin   = origin;
                     geoCallback = callback;
                     ActivityCompat.requestPermissions(MainActivity.this,
-                        new String[]{{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}},
+                        new String[]{{Manifest.permission.ACCESS_FINE_LOCATION,
+                                      Manifest.permission.ACCESS_COARSE_LOCATION}},
                         LOCATION_PERMISSION_CODE);
                 }}
             }}
 
             @Override
             public void onProgressChanged(WebView view, int newProgress) {{
-                if (newProgress >= 100) {{
-                    swipeRefresh.setRefreshing(false);
-                }}
+                if (newProgress >= 100) swipeRefresh.setRefreshing(false);
             }}
         }});
     }}
@@ -836,49 +963,31 @@ public class MainActivity extends AppCompatActivity {{
     // FILE CHOOSER MODULE
     // ═══════════════════════════════
     private String[] getAcceptedMimeTypes() {{
-        if (pendingFileChooserParams == null || pendingFileChooserParams.getAcceptTypes() == null) {{
+        if (pendingFileChooserParams == null
+                || pendingFileChooserParams.getAcceptTypes() == null)
             return new String[]{{"*/*"}};
-        }}
-
         List<String> mimeTypes = new ArrayList<>();
         for (String type : pendingFileChooserParams.getAcceptTypes()) {{
-            if (type == null) {{
-                continue;
-            }}
-            String trimmed = type.trim();
-            if (!trimmed.isEmpty()) {{
-                mimeTypes.add(trimmed);
-            }}
+            if (type == null) continue;
+            String t = type.trim();
+            if (!t.isEmpty()) mimeTypes.add(t);
         }}
-
-        if (mimeTypes.isEmpty()) {{
-            mimeTypes.add("*/*");
-        }}
-
+        if (mimeTypes.isEmpty()) mimeTypes.add("*/*");
         return mimeTypes.toArray(new String[0]);
     }}
 
     private Intent buildCameraIntent() {{
-        if (!isPermissionGranted(Manifest.permission.CAMERA)) {{
-            return null;
-        }}
-
-        Intent takePictureIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
-        if (takePictureIntent.resolveActivity(getPackageManager()) == null) {{
-            return null;
-        }}
-
+        if (!isPermissionGranted(Manifest.permission.CAMERA)) return null;
+        Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+        if (intent.resolveActivity(getPackageManager()) == null) return null;
         try {{
-            File captureDir = new File(getExternalFilesDir(null), "capture");
-            if (!captureDir.exists() && !captureDir.mkdirs()) {{
-                return null;
-            }}
-
-            File photoFile = File.createTempFile("camera_", ".jpg", captureDir);
-            cameraImageUri = FileProvider.getUriForFile(this, "{PACKAGE_NAME}.fileprovider", photoFile);
-            takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, cameraImageUri);
-            takePictureIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
-            return takePictureIntent;
+            File dir = new File(getExternalFilesDir(null), "capture");
+            if (!dir.exists() && !dir.mkdirs()) return null;
+            File photo = File.createTempFile("camera_", ".jpg", dir);
+            cameraImageUri = FileProvider.getUriForFile(this, "{PACKAGE_NAME}.fileprovider", photo);
+            intent.putExtra(MediaStore.EXTRA_OUTPUT, cameraImageUri);
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+            return intent;
         }} catch (IOException e) {{
             cameraImageUri = null;
             return null;
@@ -886,29 +995,25 @@ public class MainActivity extends AppCompatActivity {{
     }}
 
     private void launchFileChooser() {{
-        Intent pickIntent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-        pickIntent.setType("*/*");
-        pickIntent.addCategory(Intent.CATEGORY_OPENABLE);
-        pickIntent.putExtra(Intent.EXTRA_MIME_TYPES, getAcceptedMimeTypes());
-        pickIntent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE,
-            pendingFileChooserParams != null && pendingFileChooserParams.getMode() == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE);
-        pickIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        pick.setType("*/*");
+        pick.addCategory(Intent.CATEGORY_OPENABLE);
+        pick.putExtra(Intent.EXTRA_MIME_TYPES, getAcceptedMimeTypes());
+        pick.putExtra(Intent.EXTRA_ALLOW_MULTIPLE,
+            pendingFileChooserParams != null
+            && pendingFileChooserParams.getMode() == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE);
+        pick.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
 
-        List<Intent> extraIntents = new ArrayList<>();
-        Intent takePictureIntent = buildCameraIntent();
-        if (takePictureIntent != null) {{
-            extraIntents.add(takePictureIntent);
-        }}
+        List<Intent> extra = new ArrayList<>();
+        Intent cam = buildCameraIntent();
+        if (cam != null) extra.add(cam);
 
-        Intent chooserIntent = Intent.createChooser(pickIntent, "Select File");
-        chooserIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-        chooserIntent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
-        if (!extraIntents.isEmpty()) {{
-            chooserIntent.putExtra(Intent.EXTRA_INITIAL_INTENTS, extraIntents.toArray(new Intent[0]));
-        }}
-
+        Intent chooser = Intent.createChooser(pick, "Select File");
+        chooser.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+        if (!extra.isEmpty())
+            chooser.putExtra(Intent.EXTRA_INITIAL_INTENTS, extra.toArray(new Intent[0]));
         try {{
-            startActivityForResult(chooserIntent, FILE_CHOOSER_REQUEST);
+            startActivityForResult(chooser, FILE_CHOOSER_REQUEST);
         }} catch (Exception e) {{
             clearFileUploadCallback();
             Toast.makeText(this, "Cannot open file chooser", Toast.LENGTH_SHORT).show();
@@ -916,24 +1021,15 @@ public class MainActivity extends AppCompatActivity {{
     }}
 
     private Uri[] extractSelectedFiles(Intent data) {{
-        if (data == null) {{
-            return cameraImageUri != null ? new Uri[]{{cameraImageUri}} : null;
+        if (data == null) return cameraImageUri != null ? new Uri[]{{cameraImageUri}} : null;
+        ClipData cd = data.getClipData();
+        if (cd != null && cd.getItemCount() > 0) {{
+            Uri[] r = new Uri[cd.getItemCount()];
+            for (int i = 0; i < cd.getItemCount(); i++) r[i] = cd.getItemAt(i).getUri();
+            return r;
         }}
-
-        ClipData clipData = data.getClipData();
-        if (clipData != null && clipData.getItemCount() > 0) {{
-            Uri[] results = new Uri[clipData.getItemCount()];
-            for (int i = 0; i < clipData.getItemCount(); i++) {{
-                results[i] = clipData.getItemAt(i).getUri();
-            }}
-            return results;
-        }}
-
-        Uri singleUri = data.getData();
-        if (singleUri != null) {{
-            return new Uri[]{{singleUri}};
-        }}
-
+        Uri u = data.getData();
+        if (u != null) return new Uri[]{{u}};
         return cameraImageUri != null ? new Uri[]{{cameraImageUri}} : null;
     }}
 
@@ -947,45 +1043,35 @@ public class MainActivity extends AppCompatActivity {{
                 super.onPageFinished(view, url);
                 swipeRefresh.setRefreshing(false);
                 CookieManager.getInstance().flush();
-            }}
+{notif_page_finished_extra}            }}
 
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {{
                 String url = request.getUrl().toString();
-
                 if (url.startsWith("tel:")) {{
                     try {{
-                        if (ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED) {{
+                        if (isPermissionGranted(Manifest.permission.CALL_PHONE))
                             startActivity(new Intent(Intent.ACTION_CALL, Uri.parse(url)));
-                        }} else {{
+                        else
                             startActivity(new Intent(Intent.ACTION_DIAL, Uri.parse(url)));
-                        }}
-                    }} catch (Exception e) {{ /* ignore */ }}
+                    }} catch (Exception e) {{}}
                     return true;
                 }}
-
-                if (url.startsWith("mailto:") || url.startsWith("sms:") || url.startsWith("whatsapp:") || url.startsWith("intent:") || url.startsWith("geo:")) {{
-                    try {{
-                        startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
-                    }} catch (Exception e) {{ /* ignore */ }}
+                if (url.startsWith("mailto:") || url.startsWith("sms:") ||
+                    url.startsWith("whatsapp:") || url.startsWith("intent:") || url.startsWith("geo:")) {{
+                    try {{ startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); }} catch (Exception e) {{}}
                     return true;
                 }}
-
                 if (url.startsWith("market:") || url.contains("play.google.com/store")) {{
-                    try {{
-                        startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
-                    }} catch (Exception e) {{ /* ignore */ }}
+                    try {{ startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); }} catch (Exception e) {{}}
                     return true;
                 }}
-
                 return false;
             }}
 
             @Override
             public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {{
-                if (request.isForMainFrame()) {{
-                    loadOfflinePage();
-                }}
+                if (request.isForMainFrame()) loadOfflinePage();
             }}
 {proxy_auth_handler}
         }});
@@ -997,11 +1083,14 @@ public class MainActivity extends AppCompatActivity {{
             webView.loadUrl("file:///android_asset/offline.html");
         }} else {{
             webView.loadData(
-                "<html><body style='display:flex;align-items:center;justify-content:center;height:100vh;margin:0;font-family:sans-serif;'>" +
-                "<div style='text-align:center'><h2>No Internet</h2><p>Please check your connection</p>" +
-                "<button onclick='location.reload()' style='padding:12px 24px;background:{SPLASH_COLOR};color:white;border:none;border-radius:8px;font-size:16px;margin-top:16px;'>Retry</button></div></body></html>",
-                "text/html", "UTF-8"
-            );
+                "<html><body style='display:flex;align-items:center;justify-content:center;" +
+                "height:100vh;margin:0;font-family:sans-serif;'>" +
+                "<div style='text-align:center'><h2>No Internet</h2>" +
+                "<p>Please check your connection</p>" +
+                "<button onclick='location.reload()' style='padding:12px 24px;background:{SPLASH_COLOR};" +
+                "color:white;border:none;border-radius:8px;font-size:16px;margin-top:16px;'>Retry</button>" +
+                "</div></body></html>",
+                "text/html", "UTF-8");
         }}
     }}
 
@@ -1013,7 +1102,7 @@ public class MainActivity extends AppCompatActivity {{
     }}
 
 {proxy_method}
-
+{notif_methods}
 
     // ═══════════════════════════════
     // NAVIGATION MODULE
@@ -1032,8 +1121,8 @@ public class MainActivity extends AppCompatActivity {{
     // ═══════════════════════════════
     private boolean isOnline() {{
         ConnectivityManager cm = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
-        NetworkInfo netInfo = cm != null ? cm.getActiveNetworkInfo() : null;
-        return netInfo != null && netInfo.isConnected();
+        NetworkInfo info = cm != null ? cm.getActiveNetworkInfo() : null;
+        return info != null && info.isConnected();
     }}
 
     @Override
@@ -1042,43 +1131,41 @@ public class MainActivity extends AppCompatActivity {{
         if (requestCode == FILE_CHOOSER_REQUEST && fileUploadCallback != null) {{
             Uri[] results = resultCode == Activity.RESULT_OK ? extractSelectedFiles(data) : null;
             fileUploadCallback.onReceiveValue(results);
-            fileUploadCallback = null;
+            fileUploadCallback       = null;
             pendingFileChooserParams = null;
-            cameraImageUri = null;
+            cameraImageUri           = null;
         }}
     }}
 
     @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {{
+    public void onRequestPermissionsResult(int requestCode,
+            @NonNull String[] permissions, @NonNull int[] grantResults) {{
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-
         switch (requestCode) {{
             case CAMERA_PERMISSION_FOR_UPLOAD:
-                if (areAllPermissionsGranted(grantResults)) {{
-                    launchFileChooser();
-                }} else {{
+                if (areAllPermissionsGranted(grantResults)) launchFileChooser();
+                else {{
                     clearFileUploadCallback();
-                    Toast.makeText(this, "Camera permission is required to capture photos", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "Camera permission required", Toast.LENGTH_SHORT).show();
                 }}
                 break;
             case LOCATION_PERMISSION_CODE:
                 if (geoCallback != null) {{
                     geoCallback.invoke(geoOrigin, hasLocationPermission(), false);
                     geoCallback = null;
-                    geoOrigin = null;
+                    geoOrigin   = null;
                 }}
                 break;
             case WEB_CAMERA_PERMISSION_CODE:
                 if (pendingWebPermissionRequest != null) {{
-                    if (canGrantWebPermissionRequest(pendingWebPermissionRequest)) {{
+                    if (canGrantWebPermissionRequest(pendingWebPermissionRequest))
                         pendingWebPermissionRequest.grant(pendingWebPermissionRequest.getResources());
-                    }} else {{
+                    else
                         pendingWebPermissionRequest.deny();
-                    }}
                     pendingWebPermissionRequest = null;
                 }}
                 break;
-            case NOTIFICATION_PERMISSION_CODE:
+            case NOTIFICATION_PERMISSION_CODE:{notif_permission_body}
                 break;
         }}
     }}
@@ -1116,7 +1203,6 @@ if __name__ == "__main__":
     module_g_splash_activity()
     module_h_main_activity()
 
-    # Write flag file for the workflow to detect build type
     if BUILD_AAB:
         with open(".build_aab", "w") as f:
             f.write("true")
