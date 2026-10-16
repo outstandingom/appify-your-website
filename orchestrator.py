@@ -9,6 +9,7 @@ import os
 import sys
 import subprocess
 import urllib.request
+import urllib.parse
 import shutil
 
 # ═══════════════════════════════════════════════════════════════
@@ -31,6 +32,12 @@ ENABLE_ADMOB = config.get("enable_admob", False)
 ADMOB_BANNER = config.get("admob_banner_id", "")
 ADMOB_INTERSTITIAL = config.get("admob_interstitial_id", "")
 BUILD_AAB = config.get("build_aab", False)
+
+# FCM (real push — works when app is closed/background, unlike the
+# WebView-only notification bridge which only fires while open)
+GOOGLE_SERVICES_JSON = config.get("google_services_json", "")
+FCM_ACTIVE = bool(ENABLE_PUSH and GOOGLE_SERVICES_JSON)
+PUSH_SUBSCRIBE_PATH = config.get("push_subscribe_path", "/api/push/subscribe")
 
 # Proxy / custom IP (Pro)
 PROXY_ENABLED = bool(config.get("proxy_enabled", False))
@@ -57,6 +64,7 @@ PACKAGE_PATH = PACKAGE_NAME.replace(".", "/")
 print(f"=== Orchestrator: Building '{APP_NAME}' ({PACKAGE_NAME}) ===")
 print(f"  URL: {WEBSITE_URL}")
 print(f"  Features: push={ENABLE_PUSH}, offline={ENABLE_OFFLINE}, admob={ENABLE_ADMOB}, cookies={ENABLE_COOKIES}")
+print(f"  FCM (real background push): {'ENABLED' if FCM_ACTIVE else 'disabled'}")
 
 
 def write_file(path, content):
@@ -119,14 +127,18 @@ rootProject.name = "WebToAPK"
 include ':app'
 """)
 
-    write_file("build.gradle", """plugins {
+    gms_plugin_line = "    id 'com.google.gms.google-services' version '4.4.2' apply false\n" if FCM_ACTIVE else ""
+    write_file("build.gradle", f"""plugins {{
     id 'com.android.application' version '8.2.0' apply false
-}
+{gms_plugin_line}}}
 """)
 
     write_file("gradle.properties", """android.useAndroidX=true
 org.gradle.jvmargs=-Xmx2048m
 """)
+
+    if FCM_ACTIVE:
+        write_file("app/google-services.json", GOOGLE_SERVICES_JSON)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -140,9 +152,17 @@ def module_b_gradle():
     if ENABLE_ADMOB:
         admob_dep = "    implementation 'com.google.android.gms:play-services-ads:23.1.0'"
 
+    fcm_plugin_line = "    id 'com.google.gms.google-services'\n" if FCM_ACTIVE else ""
+    fcm_deps = ""
+    if FCM_ACTIVE:
+        fcm_deps = (
+            "    implementation platform('com.google.firebase:firebase-bom:33.1.2')\n"
+            "    implementation 'com.google.firebase:firebase-messaging'\n"
+        )
+
     write_file("app/build.gradle", f"""plugins {{
     id 'com.android.application'
-}}
+{fcm_plugin_line}}}
 
 android {{
     namespace '{PACKAGE_NAME}'
@@ -186,7 +206,7 @@ dependencies {{
     implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.1.0'
     implementation 'androidx.core:core:1.12.0'
 {admob_dep}
-}}
+{fcm_deps}}}
 """)
 
 
@@ -230,6 +250,22 @@ def module_c_manifest():
                 android:name="com.google.android.gms.ads.APPLICATION_ID"
                 android:value="ca-app-pub-3940256099942544~3347511713" />"""
 
+    fcm_service = ""
+    fcm_default_channel_meta = ""
+    if FCM_ACTIVE:
+        fcm_service = """
+        <service
+            android:name=".MyFirebaseMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>"""
+        fcm_default_channel_meta = """
+            <meta-data
+                android:name="com.google.firebase.messaging.default_notification_channel_id"
+                android:value="web_push_channel" />"""
+
     write_file("app/src/main/AndroidManifest.xml", f"""<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     {perm_xml}
@@ -241,7 +277,7 @@ def module_c_manifest():
         android:usesCleartextTraffic="true"
         android:theme="@style/AppTheme"
         android:networkSecurityConfig="@xml/network_security_config">
-{admob_meta}
+{admob_meta}{fcm_default_channel_meta}
 
         <activity
             android:name=".SplashActivity"
@@ -266,7 +302,7 @@ def module_c_manifest():
             <meta-data
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
-        </provider>
+        </provider>{fcm_service}
     </application>
 </manifest>
 """)
@@ -514,6 +550,159 @@ public class SplashActivity extends AppCompatActivity {{
 # MODULE H: MainActivity  ← THE FIX IS HERE
 # ═══════════════════════════════════════════════════════════════
 
+# ═══════════════════════════════════════════════════════════════
+# MODULE I: FirebaseMessagingService — REAL background push
+#
+# Registered via the <service> + MESSAGING_EVENT intent-filter in
+# the manifest. Android starts this automatically whenever a push
+# arrives from your server through FCM — even with the app fully
+# closed. The WebView bridge can never do this; this class is the
+# only thing that actually receives a push.
+# ═══════════════════════════════════════════════════════════════
+
+def module_i_fcm_service():
+    print("\n── Module I: FirebaseMessagingService (FCM) ──")
+    if not FCM_ACTIVE:
+        print("  (skipped — no google_services_json supplied, FCM disabled)")
+        return
+
+    parsed = urllib.parse.urlparse(WEBSITE_URL)
+    origin = f"{parsed.scheme}://{parsed.netloc}"
+    subscribe_url = origin.rstrip("/") + PUSH_SUBSCRIBE_PATH
+    app_safe = APP_NAME.replace("\\", "\\\\").replace('"', '\\"')
+
+    write_file(f"app/src/main/java/{PACKAGE_PATH}/MyFirebaseMessagingService.java", f"""package {PACKAGE_NAME};
+
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.content.Intent;
+import androidx.annotation.NonNull;
+import androidx.core.app.NotificationCompat;
+import com.google.firebase.messaging.FirebaseMessagingService;
+import com.google.firebase.messaging.RemoteMessage;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import org.json.JSONObject;
+
+/**
+ * Receives FCM pushes natively, outside the WebView — fires even
+ * when the app is closed or killed, because Android wakes this
+ * service on push arrival.
+ */
+public class MyFirebaseMessagingService extends FirebaseMessagingService {{
+
+    private static final String SUBSCRIBE_URL = "{subscribe_url}";
+    private int notifId = 2000;
+
+    @Override
+    public void onNewToken(@NonNull String token) {{
+        super.onNewToken(token);
+        android.util.Log.i("FCM", "New token: " + token);
+        sendTokenToServer(token);
+    }}
+
+    @Override
+    public void onMessageReceived(@NonNull RemoteMessage remoteMessage) {{
+        super.onMessageReceived(remoteMessage);
+
+        String title = "{app_safe}";
+        String body = "";
+        String url = "";
+
+        if (remoteMessage.getNotification() != null) {{
+            if (remoteMessage.getNotification().getTitle() != null) {{
+                title = remoteMessage.getNotification().getTitle();
+            }}
+            if (remoteMessage.getNotification().getBody() != null) {{
+                body = remoteMessage.getNotification().getBody();
+            }}
+        }}
+        if (remoteMessage.getData() != null) {{
+            if (remoteMessage.getData().containsKey("title")) {{
+                title = remoteMessage.getData().get("title");
+            }}
+            if (remoteMessage.getData().containsKey("body")) {{
+                body = remoteMessage.getData().get("body");
+            }}
+            if (remoteMessage.getData().containsKey("url")) {{
+                url = remoteMessage.getData().get("url");
+            }}
+        }}
+
+        showNotification(title, body, url);
+    }}
+
+    private void showNotification(String title, String body, String url) {{
+        try {{
+            Intent i = new Intent(this, MainActivity.class);
+            i.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
+            if (url != null && !url.isEmpty()) {{
+                i.putExtra("push_url", url);
+            }}
+            PendingIntent pi = PendingIntent.getActivity(
+                this, notifId, i,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+
+            NotificationCompat.Builder nb =
+                new NotificationCompat.Builder(this, "web_push_channel")
+                    .setSmallIcon(android.R.drawable.ic_dialog_info)
+                    .setContentTitle(title)
+                    .setContentText(body)
+                    .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
+                    .setAutoCancel(true)
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setDefaults(NotificationCompat.DEFAULT_ALL)
+                    .setContentIntent(pi);
+
+            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            if (nm != null) {{
+                nm.notify(notifId++, nb.build());
+            }}
+        }} catch (Exception e) {{
+            android.util.Log.e("FCM", "Failed to show notification", e);
+        }}
+    }}
+
+    /**
+     * POSTs the token directly to your existing subscribe endpoint.
+     * No website JS changes required — runs from native Java.
+     */
+    static void sendTokenToServer(final String token) {{
+        new Thread(() -> {{
+            HttpURLConnection conn = null;
+            try {{
+                URL u = new URL(SUBSCRIBE_URL);
+                conn = (HttpURLConnection) u.openConnection();
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Content-Type", "application/json");
+                conn.setConnectTimeout(10000);
+                conn.setReadTimeout(10000);
+                conn.setDoOutput(true);
+
+                JSONObject payload = new JSONObject();
+                payload.put("token", token);
+                payload.put("type", "android-fcm");
+                payload.put("platform", "android");
+
+                try (OutputStream os = conn.getOutputStream()) {{
+                    os.write(payload.toString().getBytes(StandardCharsets.UTF_8));
+                }}
+
+                int code = conn.getResponseCode();
+                android.util.Log.i("FCM", "Token sent to server, response code: " + code);
+            }} catch (Exception e) {{
+                android.util.Log.e("FCM", "Failed to send token to server", e);
+            }} finally {{
+                if (conn != null) conn.disconnect();
+            }}
+        }}).start();
+    }}
+}}
+""")
+
+
 def module_h_main_activity():
     print("\n── Module H: MainActivity ──")
 
@@ -611,6 +800,8 @@ import android.webkit.HttpAuthHandler;"""
             "import android.webkit.JavascriptInterface;\n"
             "import androidx.core.app.NotificationCompat;"
         )
+        if FCM_ACTIVE:
+            notif_imports += "\nimport com.google.firebase.messaging.FirebaseMessaging;"
 
         # Added to onCreate — registers the JS bridge + creates channel
         notif_bridge_setup = (
@@ -627,6 +818,18 @@ import android.webkit.HttpAuthHandler;"""
             "            }\n"
             "        }"
         )
+        if FCM_ACTIVE:
+            notif_bridge_setup += (
+                "\n        // Fetch current FCM token and sync it (covers reinstalls where\n"
+                "        // onNewToken() does not fire again) — sent natively, no JS needed.\n"
+                "        FirebaseMessaging.getInstance().getToken().addOnCompleteListener(task -> {\n"
+                "            if (task.isSuccessful() && task.getResult() != null) {\n"
+                "                MyFirebaseMessagingService.sendTokenToServer(task.getResult());\n"
+                "            } else {\n"
+                "                android.util.Log.w(\"FCM\", \"Token fetch failed\", task.getException());\n"
+                "            }\n"
+                "        });"
+            )
 
         # Injected into WebView on every page load
         notif_page_finished_extra = "                injectNotificationPolyfill();\n"
@@ -1201,6 +1404,7 @@ if __name__ == "__main__":
     module_e_layouts()
     module_f_offline()
     module_g_splash_activity()
+    module_i_fcm_service()
     module_h_main_activity()
 
     if BUILD_AAB:
