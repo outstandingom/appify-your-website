@@ -32,6 +32,14 @@ on:
       enable_push:
         type: boolean
         default: false
+      google_services_json:
+        description: 'Contents of google-services.json (client Firebase config, baked into the APK)'
+        required: false
+        type: string
+      firebase_service_account_json:
+        description: 'Contents of the Firebase service account key JSON (server-side, used once to register with the push server)'
+        required: false
+        type: string
       enable_offline:
         type: boolean
         default: false
@@ -148,6 +156,8 @@ jobs:
                   "splash_color": inputs.get("splash_color") or "#10B981",
                   "status_bar_color": inputs.get("status_bar_color") or "#000000",
                   "enable_push": b(inputs.get("enable_push")),
+                  "google_services_json": inputs.get("google_services_json") or None,
+                  "firebase_service_account_json": inputs.get("firebase_service_account_json") or None,
                   "enable_offline": b(inputs.get("enable_offline")),
                   "offline_message": inputs.get("offline_message") or "You are offline.",
                   "enable_analytics": b(inputs.get("enable_analytics")),
@@ -214,6 +224,57 @@ jobs:
 
       - name: Generate Android project
         run: python3 orchestrator.py
+
+      - name: Register push credentials with push server
+        if: fromJson(needs.prepare.outputs.app_config).enable_push == true
+        env:
+          # Set these two as repo secrets ONCE — they're the same for
+          # every build, since one push server serves every converted
+          # app. Per-app isolation comes from appId, not from separate
+          # server deployments.
+          PUSH_SERVER_URL: ${{ secrets.PUSH_SERVER_URL }}
+          PUSH_SERVER_ADMIN_KEY: ${{ secrets.PUSH_SERVER_ADMIN_KEY }}
+          # Read from the already-resolved app_config output so this
+          # works correctly whether the build was triggered via
+          # workflow_dispatch or repository_dispatch.
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ fromJson(needs.prepare.outputs.app_config).firebase_service_account_json }}
+        run: |
+          set -e
+          if [ -z "$PUSH_SERVER_URL" ]; then
+            echo "⚠️ PUSH_SERVER_URL secret not set — skipping push registration."
+            echo "   The APK will build fine, but push notifications won't be deliverable"
+            echo "   until this is configured and the app is registered."
+            exit 0
+          fi
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT_JSON" ] || [ "$FIREBASE_SERVICE_ACCOUNT_JSON" = "null" ]; then
+            echo "⚠️ No firebase_service_account_json provided for this build — skipping."
+            exit 0
+          fi
+
+          APP_ID=$(cat .package_name)
+          echo "Registering push credential for appId: $APP_ID"
+
+          PAYLOAD=$(python3 - <<PY
+          import json, os
+          sa = json.loads(os.environ["FIREBASE_SERVICE_ACCOUNT_JSON"])
+          app_id = open(".package_name").read().strip()
+          print(json.dumps({"appId": app_id, "serviceAccountJson": sa}))
+          PY
+          )
+
+          HTTP_CODE=$(curl -s -o /tmp/register_response.txt -w "%{http_code}" \
+            -X POST "$PUSH_SERVER_URL/api/admin/register-app" \
+            -H "Content-Type: application/json" \
+            -H "x-admin-key: $PUSH_SERVER_ADMIN_KEY" \
+            -d "$PAYLOAD")
+
+          echo "Register HTTP status: $HTTP_CODE"
+          cat /tmp/register_response.txt
+          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+            echo "✅ Push credential registered for $APP_ID"
+          else
+            echo "❌ Failed to register push credential (build will continue anyway)"
+          fi
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3

@@ -140,6 +140,12 @@ org.gradle.jvmargs=-Xmx2048m
     if FCM_ACTIVE:
         write_file("app/google-services.json", GOOGLE_SERVICES_JSON)
 
+    # Written unconditionally (cheap, useful regardless of push) so CI
+    # always knows the resolved package name — including when it was
+    # auto-derived from app_name rather than explicitly set — without
+    # reimplementing the slug logic in bash.
+    write_file(".package_name", PACKAGE_NAME)
+
 
 # ═══════════════════════════════════════════════════════════════
 # MODULE B: App build.gradle
@@ -685,6 +691,7 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {{
                 payload.put("token", token);
                 payload.put("type", "android-fcm");
                 payload.put("platform", "android");
+                payload.put("appId", "{PACKAGE_NAME}");
 
                 try (OutputStream os = conn.getOutputStream()) {{
                     os.write(payload.toString().getBytes(StandardCharsets.UTF_8));
