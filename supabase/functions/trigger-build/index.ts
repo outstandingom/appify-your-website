@@ -17,6 +17,17 @@ interface BuildRequest {
   splash_color?: string;
   status_bar_color?: string;
   enable_push?: boolean;
+  // ✅ ADDED — client-side Firebase config, baked into the APK by
+  // orchestrator.py so the device can register with FCM. Without
+  // forwarding this through to the workflow's inputs, FCM silently
+  // never activates for any build, same failure mode callback_url
+  // had before it was added here.
+  google_services_json?: string;
+  // ✅ ADDED — server-side Firebase Admin credential. Never embedded
+  // in the APK; build.yml uses it once, right after the Android
+  // project is generated, to register this app's Firebase project
+  // with the push server, then discards it.
+  firebase_service_account_json?: string;
   enable_offline?: boolean;
   offline_message?: string;
   enable_analytics?: boolean;
@@ -53,6 +64,8 @@ serve(async (req: Request) => {
       splash_color = "#10B981",
       status_bar_color = "#000000",
       enable_push = false,
+      google_services_json,
+      firebase_service_account_json,
       enable_offline = false,
       offline_message = "You are offline. Please check your connection.",
       enable_analytics = false,
@@ -95,6 +108,18 @@ serve(async (req: Request) => {
     if (!validPlatforms.includes(platform.toLowerCase())) {
       return new Response(
         JSON.stringify({ error: "platform must be 'android' or 'ios'" }),
+        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    // If push is requested, both Firebase credentials must be present
+    // — otherwise the build silently produces an app that can never
+    // receive push, which is much harder to debug after the fact.
+    if (enable_push && (!google_services_json || !firebase_service_account_json)) {
+      return new Response(
+        JSON.stringify({
+          error: "enable_push requires both google_services_json and firebase_service_account_json",
+        }),
         { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
@@ -161,6 +186,11 @@ serve(async (req: Request) => {
       splash_color: splash_color,
       status_bar_color: status_bar_color,
       enable_push: String(enable_push),
+      // ✅ ADDED — must be declared in build.yml's workflow_dispatch
+      // inputs too, or GitHub drops these exactly like callback_url
+      // was dropped before it was added.
+      google_services_json: google_services_json || "",
+      firebase_service_account_json: firebase_service_account_json || "",
       enable_offline: String(enable_offline),
       offline_message: offline_message,
       enable_analytics: String(enable_analytics),
@@ -178,9 +208,6 @@ serve(async (req: Request) => {
       proxy_username: proxy_username || "",
       proxy_password: proxy_password || "",
       build_id: finalBuildId,
-      // ✅ ADDED — the one and only functional change in this file.
-      // Without this, the workflow has no URL to call back to, so it
-      // never updates apk_builds.status, and the APK never shows as ready.
       callback_url: supabaseUrl ? `${supabaseUrl}/functions/v1/build-callback` : "",
     };
 
