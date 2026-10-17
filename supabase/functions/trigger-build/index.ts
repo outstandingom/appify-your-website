@@ -174,11 +174,6 @@ serve(async (req: Request) => {
       splash_color: splash_color,
       status_bar_color: status_bar_color,
       enable_push: String(enable_push),
-      // ✅ ADDED — must be declared in build.yml's workflow_dispatch
-      // inputs too, or GitHub drops these exactly like callback_url
-      // was dropped before it was added.
-      google_services_json: google_services_json || "",
-      firebase_service_account_json: firebase_service_account_json || "",
       enable_offline: String(enable_offline),
       offline_message: offline_message,
       enable_analytics: String(enable_analytics),
@@ -188,7 +183,6 @@ serve(async (req: Request) => {
       admob_interstitial_id: admob_interstitial_id || "",
       build_aab: String(build_aab),
       platform: platform.toLowerCase(),
-      tier: tier,
       proxy_enabled: String(proxy_enabled),
       proxy_type: proxy_type,
       proxy_host: proxy_host || "",

@@ -32,14 +32,6 @@ on:
       enable_push:
         type: boolean
         default: false
-      google_services_json:
-        description: 'Contents of google-services.json (client Firebase config, baked into the APK)'
-        required: false
-        type: string
-      firebase_service_account_json:
-        description: 'Contents of the Firebase service account key JSON (server-side, used once to register with the push server)'
-        required: false
-        type: string
       enable_offline:
         type: boolean
         default: false
@@ -66,10 +58,6 @@ on:
         description: 'android | ios'
         type: string
         default: 'android'
-      tier:
-        description: 'free | premium | pro'
-        type: string
-        default: 'free'
       proxy_enabled:
         type: boolean
         default: false
@@ -156,8 +144,6 @@ jobs:
                   "splash_color": inputs.get("splash_color") or "#10B981",
                   "status_bar_color": inputs.get("status_bar_color") or "#000000",
                   "enable_push": b(inputs.get("enable_push")),
-                  "google_services_json": inputs.get("google_services_json") or None,
-                  "firebase_service_account_json": inputs.get("firebase_service_account_json") or None,
                   "enable_offline": b(inputs.get("enable_offline")),
                   "offline_message": inputs.get("offline_message") or "You are offline.",
                   "enable_analytics": b(inputs.get("enable_analytics")),
