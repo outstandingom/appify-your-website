@@ -224,6 +224,8 @@ jobs:
 
       - name: Generate Android project
         run: python3 orchestrator.py
+        env:
+          PUSH_SERVER_URL: ${{ secrets.PUSH_SERVER_URL }}
 
       - name: Register push credentials with push server
         if: fromJson(needs.prepare.outputs.app_config).enable_push == true

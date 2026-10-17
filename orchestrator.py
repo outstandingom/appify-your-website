@@ -33,11 +33,10 @@ ADMOB_BANNER = config.get("admob_banner_id", "")
 ADMOB_INTERSTITIAL = config.get("admob_interstitial_id", "")
 BUILD_AAB = config.get("build_aab", False)
 
-# FCM (real push — works when app is closed/background, unlike the
-# WebView-only notification bridge which only fires while open)
 GOOGLE_SERVICES_JSON = config.get("google_services_json", "")
 FCM_ACTIVE = bool(ENABLE_PUSH and GOOGLE_SERVICES_JSON)
 PUSH_SUBSCRIBE_PATH = config.get("push_subscribe_path", "/api/push/subscribe")
+PUSH_SERVER_URL = (config.get("push_server_url") or os.environ.get("PUSH_SERVER_URL") or "").strip()
 
 # Proxy / custom IP (Pro)
 PROXY_ENABLED = bool(config.get("proxy_enabled", False))
@@ -377,33 +376,52 @@ def module_d_icon_splash():
         "mipmap-xxhdpi": 144, "mipmap-xxxhdpi": 192,
     }
 
+    DUMMY_PNG = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15c4\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82'
+    cmd_prefix = ["magick"] if sys.platform == "win32" and shutil.which("magick") else ["convert"]
+
     if has_icon:
-        for folder, size in sizes.items():
-            out = f"app/src/main/res/{folder}/ic_launcher.png"
-            subprocess.run([
-                "convert", "/tmp/icon_original.png",
-                "-resize", f"{size}x{size}!",
-                "-background", "none", "-gravity", "center",
-                "-extent", f"{size}x{size}", out
-            ], check=True)
-        subprocess.run([
-            "convert", "/tmp/icon_original.png",
-            "-resize", "288x288", "-background", "none",
-            "-gravity", "center", "-extent", "288x288",
-            "app/src/main/res/drawable/splash_logo.png"
-        ], check=True)
-        print("  ✓ Processed icon into all mipmap densities + splash logo")
+        try:
+            for folder, size in sizes.items():
+                out = f"app/src/main/res/{folder}/ic_launcher.png"
+                subprocess.run(cmd_prefix + [
+                    "/tmp/icon_original.png",
+                    "-resize", f"{size}x{size}!",
+                    "-background", "none", "-gravity", "center",
+                    "-extent", f"{size}x{size}", out
+                ], check=True, capture_output=True)
+            subprocess.run(cmd_prefix + [
+                "/tmp/icon_original.png",
+                "-resize", "288x288", "-background", "none",
+                "-gravity", "center", "-extent", "288x288",
+                "app/src/main/res/drawable/splash_logo.png"
+            ], check=True, capture_output=True)
+            print("  ✓ Processed icon into all mipmap densities + splash logo")
+        except Exception as e:
+            print(f"  ⚠ ImageMagick error ({e}), writing fallback icon PNGs")
+            for folder in sizes.keys():
+                with open(f"app/src/main/res/{folder}/ic_launcher.png", "wb") as f:
+                    f.write(DUMMY_PNG)
+            with open("app/src/main/res/drawable/splash_logo.png", "wb") as f:
+                f.write(DUMMY_PNG)
     else:
         first_letter = APP_NAME[0].upper() if APP_NAME else "A"
-        for folder, size in sizes.items():
-            out = f"app/src/main/res/{folder}/ic_launcher.png"
-            subprocess.run([
-                "convert", "-size", f"{size}x{size}", f"xc:{SPLASH_COLOR}",
-                "-fill", "white", "-gravity", "center",
-                "-pointsize", str(size // 3), "-annotate", "0", first_letter,
-                out
-            ], check=True)
-        print("  ✓ Generated default letter icon")
+        try:
+            if sys.platform == "win32" and not shutil.which("magick"):
+                raise RuntimeError("ImageMagick not installed on Windows")
+            for folder, size in sizes.items():
+                out = f"app/src/main/res/{folder}/ic_launcher.png"
+                subprocess.run(cmd_prefix + [
+                    "-size", f"{size}x{size}", f"xc:{SPLASH_COLOR}",
+                    "-fill", "white", "-gravity", "center",
+                    "-pointsize", str(size // 3), "-annotate", "0", first_letter,
+                    out
+                ], check=True, capture_output=True)
+            print("  ✓ Generated default letter icon")
+        except Exception as e:
+            print(f"  ⚠ ImageMagick unavailable ({e}), writing fallback icon PNGs")
+            for folder in sizes.keys():
+                with open(f"app/src/main/res/{folder}/ic_launcher.png", "wb") as f:
+                    f.write(DUMMY_PNG)
 
     if has_icon:
         write_file("app/src/main/res/drawable/splash_background.xml", f"""<?xml version="1.0" encoding="utf-8"?>
@@ -572,9 +590,14 @@ def module_i_fcm_service():
         print("  (skipped — no google_services_json supplied, FCM disabled)")
         return
 
-    parsed = urllib.parse.urlparse(WEBSITE_URL)
-    origin = f"{parsed.scheme}://{parsed.netloc}"
-    subscribe_url = origin.rstrip("/") + PUSH_SUBSCRIBE_PATH
+    if PUSH_SERVER_URL:
+        subscribe_url = PUSH_SERVER_URL.rstrip("/") + "/api/push/subscribe"
+        print(f"  FCM subscribe URL: {subscribe_url} (via PUSH_SERVER_URL)")
+    else:
+        parsed = urllib.parse.urlparse(WEBSITE_URL)
+        origin = f"{parsed.scheme}://{parsed.netloc}"
+        subscribe_url = origin.rstrip("/") + PUSH_SUBSCRIBE_PATH
+        print(f"  FCM subscribe URL: {subscribe_url} (via website origin)")
     app_safe = APP_NAME.replace("\\", "\\\\").replace('"', '\\"')
 
     write_file(f"app/src/main/java/{PACKAGE_PATH}/MyFirebaseMessagingService.java", f"""package {PACKAGE_NAME};

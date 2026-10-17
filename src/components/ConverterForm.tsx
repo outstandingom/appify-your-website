@@ -30,12 +30,7 @@ const ConverterForm = () => {
 
   const isValid =
     config.websiteUrl.trim().length > 0 &&
-    config.appName.trim().length > 0 &&
-    // If push is on, both Firebase files must be uploaded, or the
-    // build will silently produce an app that can never receive push.
-    (!config.enablePush ||
-      (config.googleServicesJson.trim().length > 0 &&
-       config.firebaseServiceAccountJson.trim().length > 0));
+    config.appName.trim().length > 0;
 
   // Poll build status
   useEffect(() => {

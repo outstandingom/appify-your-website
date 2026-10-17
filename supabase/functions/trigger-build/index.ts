@@ -112,18 +112,6 @@ serve(async (req: Request) => {
       );
     }
 
-    // If push is requested, both Firebase credentials must be present
-    // — otherwise the build silently produces an app that can never
-    // receive push, which is much harder to debug after the fact.
-    if (enable_push && (!google_services_json || !firebase_service_account_json)) {
-      return new Response(
-        JSON.stringify({
-          error: "enable_push requires both google_services_json and firebase_service_account_json",
-        }),
-        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
-    }
-
     // Generate build_id if not provided
     const finalBuildId = build_id || uuid.generate();
     console.log("📦 Build ID:", finalBuildId);
