@@ -18,18 +18,6 @@ export interface BuildConfig {
 
   // Premium
   enablePush: boolean;
-  // Client-side Firebase config — baked into the APK so the device
-  // can register with FCM and obtain a token. Collected from the
-  // user's own Firebase project (Project Settings > General >
-  // "Your apps" > google-services.json download).
-  googleServicesJson: string;
-  // Server-side Firebase Admin credential — used by the push backend
-  // to actually SEND messages to this app's devices. Collected from
-  // the user's own Firebase project (Project Settings > Service
-  // accounts > Generate new private key). NEVER goes into the APK —
-  // only forwarded to the trusted build pipeline to register with
-  // the push server.
-  firebaseServiceAccountJson: string;
   enableOffline: boolean;
   offlineMessage: string;
   enableAnalytics: boolean;
@@ -64,8 +52,6 @@ export const DEFAULT_CONFIG: BuildConfig = {
   splashColor: "#10B981",
   statusBarColor: "#000000",
   enablePush: false,
-  googleServicesJson: "",
-  firebaseServiceAccountJson: "",
   enableOffline: false,
   offlineMessage: "You are offline. Please check your connection.",
   enableAnalytics: false,

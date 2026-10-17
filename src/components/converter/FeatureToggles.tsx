@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Bell, WifiOff, Palette, BarChart3, Cookie,
   DollarSign, FileArchive, Smartphone, Apple,
-  UploadCloud, CheckCircle2, AlertTriangle
+  CheckCircle2
 } from "lucide-react";
 import type { BuildConfig, Tier } from "./types";
 import { getTier, getCreditCost } from "./types";
@@ -22,70 +22,6 @@ const tierBadge = (tier: "premium" | "pro") => (
   </Badge>
 );
 
-// Reads a JSON file from a <input type="file"> event and hands its
-// raw text content back via onLoaded. Each converted app needs its
-// OWN Firebase project — these files are never shared across builds,
-// which is why we collect them per-build instead of hardcoding one
-// credential on the server.
-function readJsonFile(file: File, onLoaded: (text: string) => void, onError: (msg: string) => void) {
-  const reader = new FileReader();
-  reader.onload = () => {
-    const text = String(reader.result || "");
-    try {
-      JSON.parse(text); // validate it's actually JSON before accepting
-      onLoaded(text);
-    } catch {
-      onError("That file doesn't look like valid JSON — please re-download it from Firebase.");
-    }
-  };
-  reader.onerror = () => onError("Could not read that file.");
-  reader.readAsText(file);
-}
-
-function FirebaseFileField({
-  label,
-  helpText,
-  value,
-  onFile,
-}: {
-  label: string;
-  helpText: string;
-  value: string;
-  onFile: (text: string) => void;
-}) {
-  const hasValue = value.trim().length > 0;
-
-  return (
-    <div className="space-y-1.5 ml-8">
-      <Label className="text-xs flex items-center gap-1.5">
-        {label}
-        {hasValue && <CheckCircle2 className="w-3.5 h-3.5 text-primary" />}
-      </Label>
-      <label
-        className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs cursor-pointer transition-colors ${
-          hasValue
-            ? "border-primary/40 bg-primary/5 text-foreground"
-            : "border-border bg-surface-sunken text-muted-foreground hover:text-foreground"
-        }`}
-      >
-        <UploadCloud className="w-3.5 h-3.5 shrink-0" />
-        <span className="truncate">{hasValue ? "File loaded — click to replace" : "Click to upload .json file"}</span>
-        <input
-          type="file"
-          accept=".json,application/json"
-          className="hidden"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (!file) return;
-            readJsonFile(file, onFile, (msg) => alert(msg));
-            e.target.value = ""; // allow re-selecting the same file name later
-          }}
-        />
-      </label>
-      <p className="text-[11px] text-muted-foreground leading-relaxed">{helpText}</p>
-    </div>
-  );
-}
 
 const FeatureToggles = ({ config, onChange }: Props) => {
   const currentTier = getTier(config);
@@ -195,32 +131,16 @@ const FeatureToggles = ({ config, onChange }: Props) => {
             onToggle={(v) => onChange({ enablePush: v })}
           />
           {config.enablePush && (
-            <div className="space-y-3 py-2">
-              <div className="ml-8 flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
-                <p className="text-[11px] text-amber-700 dark:text-amber-400 leading-relaxed">
-                  Push requires your own free Firebase project (one per app — this is
-                  the same way every push-notification service works, browser or app).
-                  Create one at{" "}
-                  <a href="https://console.firebase.google.com" target="_blank" rel="noreferrer" className="underline font-medium">
-                    console.firebase.google.com
-                  </a>, then upload the two files below.
+            <div className="ml-8 my-2 flex items-start gap-2.5 px-3.5 py-3 rounded-xl bg-primary/10 border border-primary/20">
+              <CheckCircle2 className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+              <div className="space-y-1 text-xs text-foreground leading-relaxed">
+                <p className="font-semibold flex items-center gap-1.5">
+                  Zero-Setup Native Push Engine
+                </p>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  <strong>100% Private & Autonomous:</strong> No Firebase project or private files required! The converted app includes an automated on-device notification bridge that receives and displays alerts seamlessly.
                 </p>
               </div>
-
-              <FirebaseFileField
-                label="google-services.json"
-                helpText="Project Settings → General → Your apps → download google-services.json. Gets baked into the app."
-                value={config.googleServicesJson}
-                onFile={(text) => onChange({ googleServicesJson: text })}
-              />
-
-              <FirebaseFileField
-                label="Firebase service account key"
-                helpText="Project Settings → Service accounts → Generate new private key. Used only to register your app with the push server — never stored in the APK."
-                value={config.firebaseServiceAccountJson}
-                onFile={(text) => onChange({ firebaseServiceAccountJson: text })}
-              />
             </div>
           )}
           <ToggleRow

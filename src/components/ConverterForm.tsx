@@ -112,14 +112,6 @@ const ConverterForm = () => {
         splash_color: config.splashColor || "#10B981",
         status_bar_color: config.statusBarColor || "#000000",
         enable_push: config.enablePush || false,
-        // Client-side cred, baked into the APK by orchestrator.py so
-        // the device can register with FCM and obtain a token.
-        google_services_json: config.enablePush ? (config.googleServicesJson || null) : null,
-        // Server-side cred. Never embedded in the APK — build.yml uses
-        // this once, after the build, to register this app's Firebase
-        // project with the push server via /api/admin/register-app,
-        // then discards it. Required for push to actually be sendable.
-        firebase_service_account_json: config.enablePush ? (config.firebaseServiceAccountJson || null) : null,
         enable_offline: config.enableOffline || false,
         offline_message: config.offlineMessage || "You are offline.",
         enable_analytics: config.enableAnalytics || false,
