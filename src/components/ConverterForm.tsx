@@ -111,7 +111,7 @@ const ConverterForm = () => {
         build_id: newBuildId,
         website_url: websiteUrl,
         app_name: config.appName.trim(),
-        icon_url: config.logoPreview || null,
+        icon_url: config.iconUrl?.trim() || config.logoPreview || null,
         package_name: config.packageName?.trim() || null,
         splash_color: config.splashColor || "#10B981",
         status_bar_color: config.statusBarColor || "#000000",

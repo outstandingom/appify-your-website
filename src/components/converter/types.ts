@@ -11,6 +11,7 @@ export interface BuildConfig {
   packageName: string;
   logo: File | null;
   logoPreview: string | null;
+  iconUrl?: string;
 
   // Theme
   splashColor: string;
@@ -49,6 +50,7 @@ export const DEFAULT_CONFIG: BuildConfig = {
   packageName: "",
   logo: null,
   logoPreview: null,
+  iconUrl: "",
   splashColor: "#10B981",
   statusBarColor: "#000000",
   enablePush: false,

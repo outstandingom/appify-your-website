@@ -278,6 +278,7 @@ def module_c_manifest():
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
         android:label="{APP_NAME}"
         android:usesCleartextTraffic="true"
         android:theme="@style/AppTheme"
@@ -364,10 +365,25 @@ def module_d_icon_splash():
     has_icon = False
     if ICON_URL and ICON_URL != "null":
         try:
-            urllib.request.urlretrieve(ICON_URL, "/tmp/icon_original.png")
-            if os.path.getsize("/tmp/icon_original.png") > 100:
-                has_icon = True
-                print("  ✓ Downloaded icon from URL")
+            if ICON_URL.startswith("data:"):
+                import base64
+                header, data = ICON_URL.split(",", 1)
+                img_data = base64.b64decode(data)
+                with open("/tmp/icon_original.png", "wb") as f:
+                    f.write(img_data)
+                if os.path.getsize("/tmp/icon_original.png") > 100:
+                    has_icon = True
+                    print("  ✓ Decoded icon from base64 data URL")
+            else:
+                req = urllib.request.Request(
+                    ICON_URL,
+                    headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+                )
+                with urllib.request.urlopen(req) as resp, open("/tmp/icon_original.png", "wb") as f:
+                    f.write(resp.read())
+                if os.path.getsize("/tmp/icon_original.png") > 100:
+                    has_icon = True
+                    print("  ✓ Downloaded icon from URL")
         except Exception as e:
             print(f"  ⚠ Icon download failed: {e}")
 
@@ -416,15 +432,22 @@ def module_d_icon_splash():
                     "-pointsize", str(size // 3), "-annotate", "0", first_letter,
                     out
                 ], check=True, capture_output=True)
-            print("  ✓ Generated default letter icon")
+            subprocess.run(cmd_prefix + [
+                "-size", "288x288", f"xc:{SPLASH_COLOR}",
+                "-fill", "white", "-gravity", "center",
+                "-pointsize", "120", "-annotate", "0", first_letter,
+                "app/src/main/res/drawable/splash_logo.png"
+            ], check=True, capture_output=True)
+            print("  ✓ Generated default letter icon and splash logo")
         except Exception as e:
             print(f"  ⚠ ImageMagick unavailable ({e}), writing fallback icon PNGs")
             for folder in sizes.keys():
                 with open(f"app/src/main/res/{folder}/ic_launcher.png", "wb") as f:
                     f.write(DUMMY_PNG)
+            with open("app/src/main/res/drawable/splash_logo.png", "wb") as f:
+                f.write(DUMMY_PNG)
 
-    if has_icon:
-        write_file("app/src/main/res/drawable/splash_background.xml", f"""<?xml version="1.0" encoding="utf-8"?>
+    write_file("app/src/main/res/drawable/splash_background.xml", f"""<?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item>
         <shape android:shape="rectangle">
@@ -433,16 +456,6 @@ def module_d_icon_splash():
     </item>
     <item android:gravity="center">
         <bitmap android:gravity="center" android:src="@drawable/splash_logo" />
-    </item>
-</layer-list>
-""")
-    else:
-        write_file("app/src/main/res/drawable/splash_background.xml", f"""<?xml version="1.0" encoding="utf-8"?>
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item>
-        <shape android:shape="rectangle">
-            <solid android:color="{SPLASH_COLOR}" />
-        </shape>
     </item>
 </layer-list>
 """)
@@ -492,6 +505,25 @@ def module_e_layouts():
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+""")
+
+
+    write_file("app/src/main/res/layout/activity_splash.xml", f"""<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/splash_color">
+
+    <ImageView
+        android:id="@+id/splash_logo"
+        android:layout_width="160dp"
+        android:layout_height="160dp"
+        android:layout_centerInParent="true"
+        android:src="@drawable/splash_logo"
+        android:scaleType="fitCenter"
+        android:contentDescription="{APP_NAME}" />
+
+</RelativeLayout>
 """)
 
 
@@ -560,6 +592,7 @@ public class SplashActivity extends AppCompatActivity {{
     @Override
     protected void onCreate(Bundle savedInstanceState) {{
         super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_splash);
         new Handler(Looper.getMainLooper()).postDelayed(() -> {{
             startActivity(new Intent(SplashActivity.this, MainActivity.class));
             overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
