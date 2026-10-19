@@ -103,8 +103,12 @@ const ConverterForm = () => {
         tier: tier,
       });
 
+      const newBuildId = crypto.randomUUID();
+      setBuildId(newBuildId);
+
       // Prepare the request body with proper null handling
       const requestBody = {
+        build_id: newBuildId,
         website_url: websiteUrl,
         app_name: config.appName.trim(),
         icon_url: config.logoPreview || null,
@@ -146,13 +150,9 @@ const ConverterForm = () => {
         throw new Error(data.error);
       }
       
-      if (!data?.build_id) {
-        console.error("❌ No build_id in response:", data);
-        throw new Error("No build_id returned from server");
-      }
-      
-      console.log("✅ Build started with ID:", data.build_id);
-      setBuildId(data.build_id);
+      const resolvedBuildId = data?.build_id || newBuildId;
+      console.log("✅ Build started with ID:", resolvedBuildId);
+      setBuildId(resolvedBuildId);
     } catch (err: any) {
       console.error("❌ Generation error:", err);
       setStep("error");

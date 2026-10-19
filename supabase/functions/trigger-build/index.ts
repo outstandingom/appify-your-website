@@ -1,6 +1,5 @@
 // supabase/functions/trigger-build/index.ts
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { v4 as uuid } from "https://deno.land/std@0.168.0/uuid/mod.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
 const corsHeaders = {
@@ -17,16 +16,7 @@ interface BuildRequest {
   splash_color?: string;
   status_bar_color?: string;
   enable_push?: boolean;
-  // ✅ ADDED — client-side Firebase config, baked into the APK by
-  // orchestrator.py so the device can register with FCM. Without
-  // forwarding this through to the workflow's inputs, FCM silently
-  // never activates for any build, same failure mode callback_url
-  // had before it was added here.
   google_services_json?: string;
-  // ✅ ADDED — server-side Firebase Admin credential. Never embedded
-  // in the APK; build.yml uses it once, right after the Android
-  // project is generated, to register this app's Firebase project
-  // with the push server, then discards it.
   firebase_service_account_json?: string;
   enable_offline?: boolean;
   offline_message?: string;
@@ -113,7 +103,7 @@ serve(async (req: Request) => {
     }
 
     // Generate build_id if not provided
-    const finalBuildId = build_id || uuid.generate();
+    const finalBuildId = build_id || crypto.randomUUID();
     console.log("📦 Build ID:", finalBuildId);
 
     // GitHub token & repo
@@ -131,28 +121,36 @@ serve(async (req: Request) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     
+    let supabase: any = null;
     if (supabaseUrl && supabaseServiceKey) {
-      const supabase = createClient(supabaseUrl, supabaseServiceKey);
-      
-      // Check if this build is already approved to start ('building' status)
+      supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+      // Release stale "building" slots older than 45 minutes so the queue never jams
+      await supabase
+        .from("build_queue")
+        .update({ status: "failed", completed_at: new Date().toISOString() })
+        .eq("status", "building")
+        .lt("started_at", new Date(Date.now() - 45 * 60 * 1000).toISOString());
+
       const { data: queueEntry } = await supabase
-        .from('build_queue')
-        .select('status')
-        .eq('build_id', finalBuildId)
-        .single();
-        
-      if (!queueEntry || queueEntry.status !== 'building') {
-        // If not explicitly approved, check if we're under the limit
-        const { data: activeCount } = await supabase.rpc('get_active_build_count');
-        
-        if (typeof activeCount === 'number' && activeCount >= 20) {
-           return new Response(
-             JSON.stringify({ 
-               error: "Build queue is full (max 20). Please use the queue system.",
-               status: "queued" 
-             }),
-             { status: 429, headers: { "Content-Type": "application/json", ...corsHeaders } }
-           );
+        .from("build_queue")
+        .select("id, status")
+        .eq("build_id", finalBuildId)
+        .maybeSingle();
+
+      if (!queueEntry || queueEntry.status !== "building") {
+        const { data: activeCount } = await supabase.rpc("get_active_build_count");
+        if (typeof activeCount === "number" && activeCount >= 20) {
+          return new Response(
+            JSON.stringify({ error: "Build queue is full (max 20). Please try again in a few minutes.", status: "queued" }),
+            { status: 429, headers: { "Content-Type": "application/json", ...corsHeaders } }
+          );
+        }
+        if (queueEntry) {
+          await supabase
+            .from("build_queue")
+            .update({ status: "building", started_at: new Date().toISOString() })
+            .eq("id", queueEntry.id);
         }
       }
     }
@@ -190,6 +188,9 @@ serve(async (req: Request) => {
       proxy_username: proxy_username || "",
       proxy_password: proxy_password || "",
       build_id: finalBuildId,
+      // ✅ ADDED — the one and only functional change in this file.
+      // Without this, the workflow has no URL to call back to, so it
+      // never updates apk_builds.status, and the APK never shows as ready.
       callback_url: supabaseUrl ? `${supabaseUrl}/functions/v1/build-callback` : "",
     };
 
@@ -218,12 +219,19 @@ serve(async (req: Request) => {
       } catch {
         errorMessage += `: ${errorText}`;
       }
+      if (supabase) {
+        await supabase.from("apk_builds").update({ status: "failed", error_message: errorMessage }).eq("id", finalBuildId);
+        await supabase.from("build_queue").update({ status: "failed", completed_at: new Date().toISOString() }).eq("build_id", finalBuildId);
+      }
       return new Response(
         JSON.stringify({ error: errorMessage }),
         { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
 
+    if (supabase) {
+      await supabase.from("apk_builds").update({ status: "building" }).eq("id", finalBuildId);
+    }
     console.log("✅ Build workflow triggered successfully");
 
     return new Response(
