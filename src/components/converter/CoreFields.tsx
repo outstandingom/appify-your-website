@@ -9,12 +9,54 @@ interface Props {
   onChange: (patch: Partial<BuildConfig>) => void;
 }
 
+/**
+ * Compress an image File to a 512×512 JPEG data URL.
+ * Keeps file size well under GitHub Actions' payload limit (~65 KB).
+ */
+async function compressImage(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const SIZE = 512;
+      const canvas = document.createElement("canvas");
+      canvas.width = SIZE;
+      canvas.height = SIZE;
+      const ctx = canvas.getContext("2d")!;
+      // Fill transparent background with white for JPEG compatibility
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, SIZE, SIZE);
+      // Draw image centered and scaled to fit
+      const scale = Math.min(SIZE / img.width, SIZE / img.height);
+      const w = img.width * scale;
+      const h = img.height * scale;
+      ctx.drawImage(img, (SIZE - w) / 2, (SIZE - h) / 2, w, h);
+      // Encode as JPEG at 80% quality (~10-40 KB for a typical logo)
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+      resolve(dataUrl);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Failed to load image"));
+    };
+    img.src = url;
+  });
+}
+
 const CoreFields = ({ config, onChange }: Props) => {
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
+    if (!file) return;
+
+    try {
+      // Compress to 512×512 JPEG so base64 stays small enough for API payloads
+      const compressed = await compressImage(file);
+      onChange({ logo: file, logoPreview: compressed, iconUrl: compressed });
+    } catch {
+      // Fallback: read as-is (might fail for very large images but better than nothing)
       const reader = new FileReader();
       reader.onloadend = () =>
         onChange({ logo: file, logoPreview: reader.result as string, iconUrl: reader.result as string });
@@ -82,7 +124,7 @@ const CoreFields = ({ config, onChange }: Props) => {
       <div className="space-y-2">
         <Label className="text-sm font-medium flex items-center gap-2">
           <ImageIcon className="w-4 h-4 text-primary" />
-          App Icon & Splash Screen Image
+          App Icon &amp; Splash Screen Image
           <span className="text-muted-foreground font-normal text-xs">(optional)</span>
         </Label>
 
@@ -91,7 +133,7 @@ const CoreFields = ({ config, onChange }: Props) => {
             <Link2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
               placeholder="https://example.com/logo.png"
-              value={config.iconUrl || ""}
+              value={config.iconUrl?.startsWith("data:") ? "" : (config.iconUrl || "")}
               onChange={(e) => onChange({ iconUrl: e.target.value, logoPreview: e.target.value })}
               className="h-11 pl-9 bg-surface-sunken border-border/40 focus:border-primary text-xs"
             />
@@ -109,7 +151,7 @@ const CoreFields = ({ config, onChange }: Props) => {
         <input
           ref={fileRef}
           type="file"
-          accept="image/png,image/jpeg,image/svg+xml"
+          accept="image/png,image/jpeg,image/webp,image/svg+xml"
           className="hidden"
           onChange={handleLogoChange}
         />
@@ -126,8 +168,10 @@ const CoreFields = ({ config, onChange }: Props) => {
               }}
             />
             <div className="text-xs space-y-0.5 overflow-hidden">
-              <p className="font-medium text-foreground truncate">Selected Icon & Splash Image</p>
-              <p className="text-[11px] text-muted-foreground truncate">{config.iconUrl || "Local file selected"}</p>
+              <p className="font-medium text-foreground truncate">Selected Icon &amp; Splash Image</p>
+              <p className="text-[11px] text-muted-foreground truncate">
+                {config.iconUrl?.startsWith("data:") ? "Local file selected (compressed to 512×512)" : config.iconUrl}
+              </p>
             </div>
             <button
               type="button"

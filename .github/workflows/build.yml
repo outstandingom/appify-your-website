@@ -267,16 +267,41 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
+      - name: Generate release keystore
+        run: |
+          # Generate a self-signed keystore so the APK is installable on any
+          # Android device via sideloading (no USB debugging required).
+          keytool -genkeypair -v \
+            -keystore app/release.keystore \
+            -alias releasekey \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -storepass android123 \
+            -keypass android123 \
+            -dname "CN=WebToAPK, OU=Build, O=WebToAPK, L=Unknown, ST=Unknown, C=US"
+          echo "Keystore generated"
+
       - name: Compile APK or AAB
         run: |
           gradle wrapper --gradle-version 8.4
           chmod +x gradlew
           if [ -f ".build_aab" ]; then
             echo "Building AAB (release)..."
-            ./gradlew bundleRelease --no-daemon --stacktrace
+            ./gradlew bundleRelease \
+              -Pandroid.injected.signing.store.file=release.keystore \
+              -Pandroid.injected.signing.store.password=android123 \
+              -Pandroid.injected.signing.key.alias=releasekey \
+              -Pandroid.injected.signing.key.password=android123 \
+              --no-daemon --stacktrace
           else
-            echo "Building APK (debug)..."
-            ./gradlew assembleDebug --no-daemon --stacktrace
+            echo "Building APK (release - sideloadable)..."
+            ./gradlew assembleRelease \
+              -Pandroid.injected.signing.store.file=release.keystore \
+              -Pandroid.injected.signing.store.password=android123 \
+              -Pandroid.injected.signing.key.alias=releasekey \
+              -Pandroid.injected.signing.key.password=android123 \
+              --no-daemon --stacktrace
           fi
 
       - name: Stage built artifact
@@ -287,13 +312,14 @@ jobs:
             FILE=$(find app/build/outputs/bundle/release -name "*.aab" | head -n 1)
             EXT=aab
           else
-            FILE=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+            # Release APK (signed, sideloadable on any Android device)
+            FILE=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
             EXT=apk
           fi
           if [ -z "$FILE" ]; then echo "No build artifact found"; exit 1; fi
           cp "$FILE" "out/app.${EXT}"
+          echo "Artifact staged: $(ls -lh out/app.${EXT})"
           ls -lh out/
-
       - name: Upload artifact to Supabase Storage
         run: |
           set -e
