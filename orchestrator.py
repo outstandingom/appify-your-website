@@ -987,7 +987,7 @@ import android.webkit.HttpAuthHandler;"""
             "    private void setupNotificationChannel() {\n"
             "        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {\n"
             f'            NotificationChannel ch = new NotificationChannel(\n'
-            f'                "web_push_channel", "{app_safe} Notifications",\n'
+            f'                "web_push_channel_v5", "{app_safe} Notifications",\n'
             "                NotificationManager.IMPORTANCE_HIGH);\n"
             f'            ch.setDescription("Push notifications from {app_safe}");\n'
             "            ch.enableLights(true);\n"
@@ -1018,14 +1018,24 @@ import android.webkit.HttpAuthHandler;"""
             '            "  if (window.__push_bridge_ready) return;" +\n'
             '            "  window.__push_bridge_ready = true;" +\n'
             '            "  function WebNotification(title, opts) {" +\n'
+            '            "    if (!(this instanceof WebNotification)) {" +\n'
+            '            "      return new WebNotification(title, opts);" +\n'
+            '            "    }" +\n'
             '            "    opts = opts || {};" +\n'
-            '            "    this.title = title || \'\';" +\n'
-            '            "    this.body = (opts && opts.body) ? opts.body : \'\';" +\n'
-            '            "    this.icon = (opts && opts.icon) ? opts.icon : \'\';" +\n'
-            '            "    this.tag = (opts && opts.tag) ? opts.tag : \'\';" +\n'
+            '            "    if (typeof opts === \'string\') { opts = { body: opts }; }" +\n'
+            '            "    this.title = title ? String(title) : \'\';" +\n'
+            '            "    this.body = (opts && opts.body) ? String(opts.body) : \'\';" +\n'
+            '            "    this.icon = (opts && opts.icon) ? String(opts.icon) : \'\';" +\n'
+            '            "    this.tag = (opts && opts.tag) ? String(opts.tag) : \'\';" +\n'
             '            "    this.data = (opts && opts.data) ? opts.data : null;" +\n'
             '            "    if (window.AndroidBridge && window.AndroidBridge.showNotification) {" +\n'
-            '            "      window.AndroidBridge.showNotification(this.title, this.body, this.icon);" +\n'
+            '            "      try {" +\n'
+            '            "        window.AndroidBridge.showNotification(this.title, this.body, this.icon);" +\n'
+            '            "      } catch(e) {" +\n'
+            '            "        try { window.AndroidBridge.showNotification(this.title, this.body); } catch(e2) {" +\n'
+            '            "          try { window.AndroidBridge.showNotification(this.title); } catch(e3) {}" +\n'
+            '            "        }" +\n'
+            '            "      }" +\n'
             '            "    }" +\n'
             '            "    var self = this;" +\n'
             '            "    setTimeout(function() {" +\n'
@@ -1071,10 +1081,18 @@ import android.webkit.HttpAuthHandler;"""
             '            "  if (typeof ServiceWorkerRegistration !== \'undefined\') {" +\n'
             '            "    ServiceWorkerRegistration.prototype.showNotification = function(title, opts) {" +\n'
             '            "      opts = opts || {};" +\n'
-            '            "      var b = (opts && opts.body) ? opts.body : \'\';" +\n'
-            '            "      var ic = (opts && opts.icon) ? opts.icon : \'\';" +\n'
+            '            "      if (typeof opts === \'string\') { opts = { body: opts }; }" +\n'
+            '            "      var t = title ? String(title) : \'\';" +\n'
+            '            "      var b = (opts && opts.body) ? String(opts.body) : \'\';" +\n'
+            '            "      var ic = (opts && opts.icon) ? String(opts.icon) : \'\';" +\n'
             '            "      if (window.AndroidBridge && window.AndroidBridge.showNotification) {" +\n'
-            '            "        window.AndroidBridge.showNotification(title || \'\', b, ic);" +\n'
+            '            "        try {" +\n'
+            '            "          window.AndroidBridge.showNotification(t, b, ic);" +\n'
+            '            "        } catch(e) {" +\n'
+            '            "          try { window.AndroidBridge.showNotification(t, b); } catch(e2) {" +\n'
+            '            "            try { window.AndroidBridge.showNotification(t); } catch(e3) {}" +\n'
+            '            "          }" +\n'
+            '            "        }" +\n'
             '            "      }" +\n'
             '            "      return Promise.resolve();" +\n'
             '            "    };" +\n'
@@ -1129,7 +1147,17 @@ import android.webkit.HttpAuthHandler;"""
             "        public String pendingIcon  = null;\n"
             "\n"
             "        @JavascriptInterface\n"
-            "        public void showNotification(final String title, final String body, String icon) {\n"
+            "        public void showNotification(final String title) {\n"
+            "            showNotification(title, \"\", \"\");\n"
+            "        }\n"
+            "\n"
+            "        @JavascriptInterface\n"
+            "        public void showNotification(final String title, final String body) {\n"
+            "            showNotification(title, body, \"\");\n"
+            "        }\n"
+            "\n"
+            "        @JavascriptInterface\n"
+            "        public void showNotification(final String title, final String body, final String icon) {\n"
             "            runOnUiThread(() -> {\n"
             "                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {\n"
             "                    if (!isPermissionGranted(Manifest.permission.POST_NOTIFICATIONS)) {\n"
@@ -1154,13 +1182,18 @@ import android.webkit.HttpAuthHandler;"""
             "                PendingIntent pi = PendingIntent.getActivity(\n"
             "                    MainActivity.this, notifId, i,\n"
             "                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);\n"
-            "                int iconRes = getApplicationInfo().icon;\n"
-            "                if (iconRes == 0) iconRes = android.R.drawable.ic_dialog_info;\n"
+            "                int appIcon = getApplicationInfo().icon;\n"
+            "                android.graphics.Bitmap largeIcon = null;\n"
+            "                try {\n"
+            "                    if (appIcon != 0) {\n"
+            "                        largeIcon = android.graphics.BitmapFactory.decodeResource(getResources(), appIcon);\n"
+            "                    }\n"
+            "                } catch (Exception e) {}\n"
             "                String finalTitle = (title != null && !title.isEmpty()) ? title : \"" + app_safe + "\";\n"
             "                String finalBody  = (body != null) ? body : \"\";\n"
             "                NotificationCompat.Builder nb =\n"
-            '                    new NotificationCompat.Builder(MainActivity.this, "web_push_channel")\n'
-            "                        .setSmallIcon(iconRes)\n"
+            '                    new NotificationCompat.Builder(MainActivity.this, "web_push_channel_v5")\n'
+            "                        .setSmallIcon(android.R.drawable.stat_notify_chat)\n"
             "                        .setContentTitle(finalTitle)\n"
             "                        .setContentText(finalBody)\n"
             "                        .setStyle(new NotificationCompat.BigTextStyle().bigText(finalBody))\n"
@@ -1171,9 +1204,15 @@ import android.webkit.HttpAuthHandler;"""
             "                        .setVibrate(new long[]{0, 250, 250, 250})\n"
             "                        .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)\n"
             "                        .setContentIntent(pi);\n"
+            "                if (largeIcon != null) {\n"
+            "                    nb.setLargeIcon(largeIcon);\n"
+            "                }\n"
             "                NotificationManager nm = (NotificationManager)\n"
             "                    MainActivity.this.getSystemService(NOTIFICATION_SERVICE);\n"
-            "                if (nm != null) nm.notify(notifId++, nb.build());\n"
+            "                if (nm != null) {\n"
+            "                    nm.notify(notifId++, nb.build());\n"
+            '                    android.util.Log.i("WebPush", "Notification displayed: " + finalTitle);\n'
+            "                }\n"
             "            } catch (Exception e) {\n"
             '                android.util.Log.e("WebPush", "Notification error", e);\n'
             "            }\n"
