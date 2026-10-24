@@ -106,6 +106,24 @@ const ConverterForm = () => {
       const newBuildId = crypto.randomUUID();
       setBuildId(newBuildId);
 
+      // Pre-insert build record so polling and tracking always have an existing row
+      try {
+        await supabase.from("apk_builds").upsert({
+          id: newBuildId,
+          website_url: websiteUrl,
+          app_name: config.appName.trim(),
+          icon_url: config.iconUrl?.trim() || config.logoPreview || null,
+          package_name: config.packageName?.trim() || null,
+          splash_color: config.splashColor || "#10B981",
+          status_bar_color: config.statusBarColor || "#000000",
+          platform: config.platform || "android",
+          status: "pending",
+          tier: tier || "free",
+        });
+      } catch (insertErr) {
+        console.warn("Pre-inserting apk_builds entry failed:", insertErr);
+      }
+
       // Prepare the request body with proper null handling
       const requestBody = {
         build_id: newBuildId,
@@ -142,7 +160,16 @@ const ConverterForm = () => {
 
       if (error) {
         console.error("❌ Function error:", error);
-        throw new Error(error.message || "Function invocation failed");
+        let detailedMsg = error.message;
+        try {
+          if (error && typeof (error as any).context?.json === "function") {
+            const errBody = await (error as any).context.json();
+            if (errBody?.error) {
+              detailedMsg = errBody.error;
+            }
+          }
+        } catch (_) {}
+        throw new Error(detailedMsg || "Function invocation failed");
       }
       
       if (data?.error) {

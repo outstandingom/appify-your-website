@@ -1,6 +1,5 @@
 // supabase/functions/trigger-build/index.ts
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -37,7 +36,7 @@ interface BuildRequest {
   build_id?: string; // optional
 }
 
-serve(async (req: Request) => {
+Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -54,8 +53,6 @@ serve(async (req: Request) => {
       splash_color = "#10B981",
       status_bar_color = "#000000",
       enable_push = false,
-      google_services_json,
-      firebase_service_account_json,
       enable_offline = false,
       offline_message = "You are offline. Please check your connection.",
       enable_analytics = false,
@@ -67,7 +64,7 @@ serve(async (req: Request) => {
       platform = "android",
       tier = "free",
       proxy_enabled = false,
-      proxy_type = "http",
+      proxy_type,
       proxy_host,
       proxy_port,
       proxy_username,
@@ -95,7 +92,7 @@ serve(async (req: Request) => {
 
     // Validate platform
     const validPlatforms = ["android", "ios"];
-    if (!validPlatforms.includes(platform.toLowerCase())) {
+    if (!validPlatforms.includes((platform || "android").toLowerCase())) {
       return new Response(
         JSON.stringify({ error: "platform must be 'android' or 'ios'" }),
         { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
@@ -108,16 +105,17 @@ serve(async (req: Request) => {
 
     // GitHub token & repo
     const githubToken = Deno.env.get("GITHUB_TOKEN");
-    const githubRepo = Deno.env.get("GITHUB_REPO"); // e.g., "owner/repo"
+    const githubRepo = Deno.env.get("GITHUB_REPO") || "outstandingom/appify-your-website";
 
-    if (!githubToken || !githubRepo) {
+    if (!githubToken) {
+      console.error("Missing GITHUB_TOKEN in environment");
       return new Response(
-        JSON.stringify({ error: "GITHUB_TOKEN or GITHUB_REPO not configured" }),
+        JSON.stringify({ error: "GITHUB_TOKEN secret not configured in Supabase Edge Functions" }),
         { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
 
-    // --- Build Queue Check ---
+    // --- Supabase Client & Build Queue Check ---
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     
@@ -125,33 +123,55 @@ serve(async (req: Request) => {
     if (supabaseUrl && supabaseServiceKey) {
       supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-      // Release stale "building" slots older than 45 minutes so the queue never jams
-      await supabase
-        .from("build_queue")
-        .update({ status: "failed", completed_at: new Date().toISOString() })
-        .eq("status", "building")
-        .lt("started_at", new Date(Date.now() - 45 * 60 * 1000).toISOString());
+      // Upsert record into apk_builds so it always exists when client starts polling
+      try {
+        await supabase.from("apk_builds").upsert({
+          id: finalBuildId,
+          website_url,
+          app_name,
+          icon_url: icon_url || null,
+          package_name: package_name || null,
+          splash_color: splash_color || "#10B981",
+          status_bar_color: status_bar_color || "#000000",
+          platform: (platform || "android").toLowerCase(),
+          status: "building",
+          updated_at: new Date().toISOString(),
+        });
+      } catch (upsertErr) {
+        console.warn("apk_builds pre-insert warning:", upsertErr);
+      }
 
-      const { data: queueEntry } = await supabase
-        .from("build_queue")
-        .select("id, status")
-        .eq("build_id", finalBuildId)
-        .maybeSingle();
+      // Safe build_queue check - fails gracefully if table does not exist
+      try {
+        await supabase
+          .from("build_queue")
+          .update({ status: "failed", completed_at: new Date().toISOString() })
+          .eq("status", "building")
+          .lt("started_at", new Date(Date.now() - 45 * 60 * 1000).toISOString());
 
-      if (!queueEntry || queueEntry.status !== "building") {
-        const { data: activeCount } = await supabase.rpc("get_active_build_count");
-        if (typeof activeCount === "number" && activeCount >= 20) {
-          return new Response(
-            JSON.stringify({ error: "Build queue is full (max 20). Please try again in a few minutes.", status: "queued" }),
-            { status: 429, headers: { "Content-Type": "application/json", ...corsHeaders } }
-          );
+        const { data: queueEntry } = await supabase
+          .from("build_queue")
+          .select("id, status")
+          .eq("build_id", finalBuildId)
+          .maybeSingle();
+
+        if (!queueEntry || queueEntry.status !== "building") {
+          const { data: activeCount } = await supabase.rpc("get_active_build_count");
+          if (typeof activeCount === "number" && activeCount >= 20) {
+            return new Response(
+              JSON.stringify({ error: "Build queue is full (max 20). Please try again in a few minutes.", status: "queued" }),
+              { status: 429, headers: { "Content-Type": "application/json", ...corsHeaders } }
+            );
+          }
+          if (queueEntry) {
+            await supabase
+              .from("build_queue")
+              .update({ status: "building", started_at: new Date().toISOString() })
+              .eq("id", queueEntry.id);
+          }
         }
-        if (queueEntry) {
-          await supabase
-            .from("build_queue")
-            .update({ status: "building", started_at: new Date().toISOString() })
-            .eq("id", queueEntry.id);
-        }
+      } catch (queueErr) {
+        console.warn("Queue check ignored:", queueErr);
       }
     }
     // -------------------------
@@ -169,28 +189,25 @@ serve(async (req: Request) => {
       app_name: app_name,
       package_name: package_name || "",
       icon_url: icon_url || "",
-      splash_color: splash_color,
-      status_bar_color: status_bar_color,
-      enable_push: String(enable_push),
-      enable_offline: String(enable_offline),
-      offline_message: offline_message,
-      enable_analytics: String(enable_analytics),
-      enable_cookies: String(enable_cookies),
-      enable_admob: String(enable_admob),
+      splash_color: splash_color || "#10B981",
+      status_bar_color: status_bar_color || "#000000",
+      enable_push: String(Boolean(enable_push)),
+      enable_offline: String(Boolean(enable_offline)),
+      offline_message: offline_message || "You are offline.",
+      enable_analytics: String(Boolean(enable_analytics)),
+      enable_cookies: String(enable_cookies !== false),
+      enable_admob: String(Boolean(enable_admob)),
       admob_banner_id: admob_banner_id || "",
       admob_interstitial_id: admob_interstitial_id || "",
-      build_aab: String(build_aab),
-      platform: platform.toLowerCase(),
-      proxy_enabled: String(proxy_enabled),
-      proxy_type: proxy_type,
+      build_aab: String(Boolean(build_aab)),
+      platform: (platform || "android").toLowerCase(),
+      proxy_enabled: String(Boolean(proxy_enabled)),
+      proxy_type: proxy_type || "http",
       proxy_host: proxy_host || "",
       proxy_port: proxy_port ? String(proxy_port) : "",
       proxy_username: proxy_username || "",
       proxy_password: proxy_password || "",
       build_id: finalBuildId,
-      // ✅ ADDED — the one and only functional change in this file.
-      // Without this, the workflow has no URL to call back to, so it
-      // never updates apk_builds.status, and the APK never shows as ready.
       callback_url: supabaseUrl ? `${supabaseUrl}/functions/v1/build-callback` : "",
     };
 
@@ -200,9 +217,10 @@ serve(async (req: Request) => {
         Authorization: `Bearer ${githubToken}`,
         Accept: "application/vnd.github+json",
         "Content-Type": "application/json",
+        "User-Agent": "Appify-Your-Website",
       },
       body: JSON.stringify({
-        ref: "main", // or the branch you want to use (e.g., "main")
+        ref: "main",
         inputs,
       }),
     });
@@ -221,7 +239,6 @@ serve(async (req: Request) => {
       }
       if (supabase) {
         await supabase.from("apk_builds").update({ status: "failed", error_message: errorMessage }).eq("id", finalBuildId);
-        await supabase.from("build_queue").update({ status: "failed", completed_at: new Date().toISOString() }).eq("build_id", finalBuildId);
       }
       return new Response(
         JSON.stringify({ error: errorMessage }),
@@ -238,7 +255,7 @@ serve(async (req: Request) => {
       JSON.stringify({
         status: "build_started",
         build_id: finalBuildId,
-        platform: platform.toLowerCase(),
+        platform: (platform || "android").toLowerCase(),
         message: "Build triggered successfully",
         details: {
           website_url,
