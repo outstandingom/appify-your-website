@@ -403,8 +403,44 @@ def module_d_icon_splash():
         "mipmap-xxhdpi": 144, "mipmap-xxxhdpi": 192,
     }
 
-    DUMMY_PNG = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15c4\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82'
+    def _make_solid_png(width, height, r, g, b):
+        """Generate a valid solid-color RGB PNG using only Python stdlib — no ImageMagick needed."""
+        import struct, zlib as _zlib
+        raw = b''
+        for _ in range(height):
+            raw += b'\x00' + bytes([r, g, b] * width)
+        compressed = _zlib.compress(raw, 9)
+        def chunk(tag, data):
+            c = tag + data
+            return struct.pack('>I', len(data)) + c + struct.pack('>I', _zlib.crc32(c) & 0xffffffff)
+        sig = b'\x89PNG\r\n\x1a\n'
+        ihdr = chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 2, 0, 0, 0))
+        idat_c = chunk(b'IDAT', compressed)
+        iend = chunk(b'IEND', b'')
+        return sig + ihdr + idat_c + iend
+
+    def _parse_hex_color(hex_color, default=(16, 185, 129)):
+        """Parse #RRGGBB hex color to (r, g, b) tuple."""
+        try:
+            h = hex_color.lstrip('#')
+            return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+        except Exception:
+            return default
+
+    splash_rgb = _parse_hex_color(SPLASH_COLOR)
+
     cmd_prefix = ["magick"] if sys.platform == "win32" and shutil.which("magick") else ["convert"]
+
+    def _write_fallback_icons():
+        """Write valid Python-generated PNG icons as fallback when ImageMagick fails."""
+        for folder, size in sizes.items():
+            png = _make_solid_png(size, size, *splash_rgb)
+            with open(f"app/src/main/res/{folder}/ic_launcher.png", "wb") as f:
+                f.write(png)
+        png_splash = _make_solid_png(288, 288, *splash_rgb)
+        with open("app/src/main/res/drawable/splash_logo.png", "wb") as f:
+            f.write(png_splash)
+        print("  ✓ Fallback: valid Python-generated solid-color PNGs written")
 
     if has_icon:
         try:
@@ -424,12 +460,8 @@ def module_d_icon_splash():
             ], check=True, capture_output=True)
             print("  ✓ Processed icon into all mipmap densities + splash logo")
         except Exception as e:
-            print(f"  ⚠ ImageMagick error ({e}), writing fallback icon PNGs")
-            for folder in sizes.keys():
-                with open(f"app/src/main/res/{folder}/ic_launcher.png", "wb") as f:
-                    f.write(DUMMY_PNG)
-            with open("app/src/main/res/drawable/splash_logo.png", "wb") as f:
-                f.write(DUMMY_PNG)
+            print(f"  ⚠ ImageMagick error ({e}), using Python PNG fallback")
+            _write_fallback_icons()
     else:
         first_letter = APP_NAME[0].upper() if APP_NAME else "A"
         try:
@@ -451,12 +483,8 @@ def module_d_icon_splash():
             ], check=True, capture_output=True)
             print("  ✓ Generated default letter icon and splash logo")
         except Exception as e:
-            print(f"  ⚠ ImageMagick unavailable ({e}), writing fallback icon PNGs")
-            for folder in sizes.keys():
-                with open(f"app/src/main/res/{folder}/ic_launcher.png", "wb") as f:
-                    f.write(DUMMY_PNG)
-            with open("app/src/main/res/drawable/splash_logo.png", "wb") as f:
-                f.write(DUMMY_PNG)
+            print(f"  ⚠ ImageMagick unavailable ({e}), using Python PNG fallback")
+            _write_fallback_icons()
 
     write_file("app/src/main/res/drawable/splash_background.xml", f"""<?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
