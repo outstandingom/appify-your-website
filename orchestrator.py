@@ -981,31 +981,97 @@ import android.webkit.HttpAuthHandler;"""
         )
 
         # injectNotificationPolyfill — overrides window.Notification with our bridge
-        # JS single-quotes inside Java string literals are escaped as \'
+        # Also provides seamless shims for ServiceWorkerRegistration.prototype.showNotification,
+        # PushManager, and navigator.permissions.query so modern PWA / web-push libraries
+        # never crash the page when push notifications are enabled.
         _inject = (
             "\n"
             "    private void injectNotificationPolyfill() {\n"
             "        String js =\n"
             '            "(function() {" +\n'
-            '            "  if (typeof AndroidBridge !== \'undefined\') {" +\n'
-            '            "    var _N = function(title, opts) {" +\n'
-            '            "      var body = (opts && opts.body) ? opts.body : \'\';" +\n'
-            '            "      var icon = (opts && opts.icon) ? opts.icon : \'\';" +\n'
-            '            "      AndroidBridge.showNotification(title, body, icon);" +\n'
-            '            "      this.close = function() {};" +\n'
-            '            "    };" +\n'
-            '            "    _N.permission = \'granted\';" +\n'
-            '            "    _N.requestPermission = function(cb) {" +\n'
-            '            "      if (cb) cb(\'granted\');" +\n'
-            '            "      return Promise.resolve(\'granted\');" +\n'
-            '            "    };" +\n'
-            '            "    try {" +\n'
-            '            "      Object.defineProperty(window, \'Notification\', {" +\n'
-            '            "        value: _N, writable: true, configurable: true" +\n'
-            '            "      });" +\n'
-            '            "    } catch(e) {" +\n'
-            '            "      try { window.Notification = _N; } catch(e2) {}" +\n'
+            '            "  if (window.__push_bridge_ready) return;" +\n'
+            '            "  window.__push_bridge_ready = true;" +\n'
+            '            "  function WebNotification(title, opts) {" +\n'
+            '            "    opts = opts || {};" +\n'
+            '            "    this.title = title || \'\';" +\n'
+            '            "    this.body = (opts && opts.body) ? opts.body : \'\';" +\n'
+            '            "    this.icon = (opts && opts.icon) ? opts.icon : \'\';" +\n'
+            '            "    this.tag = (opts && opts.tag) ? opts.tag : \'\';" +\n'
+            '            "    this.data = (opts && opts.data) ? opts.data : null;" +\n'
+            '            "    if (window.AndroidBridge && window.AndroidBridge.showNotification) {" +\n'
+            '            "      window.AndroidBridge.showNotification(this.title, this.body, this.icon);" +\n'
             '            "    }" +\n'
+            '            "    var self = this;" +\n'
+            '            "    setTimeout(function() {" +\n'
+            '            "      if (typeof self.onshow === \'function\') { try { self.onshow(); } catch(e) {} }" +\n'
+            '            "    }, 10);" +\n'
+            '            "  }" +\n'
+            '            "  WebNotification.permission = \'granted\';" +\n'
+            '            "  WebNotification.maxActions = 2;" +\n'
+            '            "  WebNotification.requestPermission = function(cb) {" +\n'
+            '            "    if (window.AndroidBridge && window.AndroidBridge.requestPermission) {" +\n'
+            '            "      window.AndroidBridge.requestPermission();" +\n'
+            '            "    }" +\n'
+            '            "    if (typeof cb === \'function\') { try { cb(\'granted\'); } catch(e) {} }" +\n'
+            '            "    return Promise.resolve(\'granted\');" +\n'
+            '            "  };" +\n'
+            '            "  WebNotification.prototype.close = function() {" +\n'
+            '            "    if (typeof this.onclose === \'function\') { try { this.onclose(); } catch(e) {} }" +\n'
+            '            "  };" +\n'
+            '            "  WebNotification.prototype.addEventListener = function(t, fn) {" +\n'
+            '            "    if (t === \'show\') this.onshow = fn;" +\n'
+            '            "    if (t === \'close\') this.onclose = fn;" +\n'
+            '            "    if (t === \'click\') this.onclick = fn;" +\n'
+            '            "  };" +\n'
+            '            "  WebNotification.prototype.removeEventListener = function() {};" +\n'
+            '            "  WebNotification.prototype.dispatchEvent = function() { return true; };" +\n'
+            '            "  try { window.Notification = WebNotification; } catch(e) {" +\n'
+            '            "    try { Object.defineProperty(window, \'Notification\', { value: WebNotification, writable: true, configurable: true }); } catch(e2) {}" +\n'
+            '            "  }" +\n'
+            '            "  if (typeof ServiceWorkerRegistration !== \'undefined\') {" +\n'
+            '            "    ServiceWorkerRegistration.prototype.showNotification = function(title, opts) {" +\n'
+            '            "      opts = opts || {};" +\n'
+            '            "      var b = (opts && opts.body) ? opts.body : \'\';" +\n'
+            '            "      var ic = (opts && opts.icon) ? opts.icon : \'\';" +\n'
+            '            "      if (window.AndroidBridge && window.AndroidBridge.showNotification) {" +\n'
+            '            "        window.AndroidBridge.showNotification(title || \'\', b, ic);" +\n'
+            '            "      }" +\n'
+            '            "      return Promise.resolve();" +\n'
+            '            "    };" +\n'
+            '            "    if (!ServiceWorkerRegistration.prototype.pushManager) {" +\n'
+            '            "      var mockSub = {" +\n'
+            '            "        endpoint: \'https://push.android.native/sub\'," +\n'
+            '            "        expirationTime: null," +\n'
+            '            "        options: { userVisibleOnly: true }," +\n'
+            '            "        getKey: function() { return new ArrayBuffer(0); }," +\n'
+            '            "        toJSON: function() { return { endpoint: \'https://push.android.native/sub\' }; }," +\n'
+            '            "        unsubscribe: function() { return Promise.resolve(true); }" +\n'
+            '            "      };" +\n'
+            '            "      var mockManager = {" +\n'
+            '            "        getSubscription: function() { return Promise.resolve(mockSub); }," +\n'
+            '            "        subscribe: function() { return Promise.resolve(mockSub); }," +\n'
+            '            "        permissionState: function() { return Promise.resolve(\'granted\'); }" +\n'
+            '            "      };" +\n'
+            '            "      try { Object.defineProperty(ServiceWorkerRegistration.prototype, \'pushManager\', { get: function() { return mockManager; }, configurable: true }); } catch(e3) {}" +\n'
+            '            "    }" +\n'
+            '            "  }" +\n'
+            '            "  if (navigator.permissions && navigator.permissions.query) {" +\n'
+            '            "    try {" +\n'
+            '            "      var origQuery = navigator.permissions.query.bind(navigator.permissions);" +\n'
+            '            "      navigator.permissions.query = function(desc) {" +\n'
+            '            "        if (desc && desc.name === \'notifications\') {" +\n'
+            '            "          return Promise.resolve({" +\n'
+            '            "            state: \'granted\'," +\n'
+            '            "            granted: true," +\n'
+            '            "            onchange: null," +\n'
+            '            "            addEventListener: function() {}," +\n'
+            '            "            removeEventListener: function() {}," +\n'
+            '            "            dispatchEvent: function() { return true; }" +\n'
+            '            "          });" +\n'
+            '            "        }" +\n'
+            '            "        return origQuery(desc);" +\n'
+            '            "      };" +\n'
+            '            "    } catch(e4) {}" +\n'
             '            "  }" +\n'
             '            "})();";\n'
             "        webView.evaluateJavascript(js, null);\n"
@@ -1029,12 +1095,16 @@ import android.webkit.HttpAuthHandler;"""
             "                    PendingIntent pi = PendingIntent.getActivity(\n"
             "                        MainActivity.this, notifId, i,\n"
             "                        PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);\n"
+            "                    int iconRes = getApplicationInfo().icon;\n"
+            "                    if (iconRes == 0) iconRes = android.R.drawable.ic_dialog_info;\n"
+            "                    String finalTitle = (title != null && !title.isEmpty()) ? title : \"" + app_safe + "\";\n"
+            "                    String finalBody = (body != null) ? body : \"\";\n"
             "                    NotificationCompat.Builder nb =\n"
             '                        new NotificationCompat.Builder(MainActivity.this, "web_push_channel")\n'
-            "                            .setSmallIcon(android.R.drawable.ic_dialog_info)\n"
-            "                            .setContentTitle(title)\n"
-            "                            .setContentText(body)\n"
-            "                            .setStyle(new NotificationCompat.BigTextStyle().bigText(body))\n"
+            "                            .setSmallIcon(iconRes)\n"
+            "                            .setContentTitle(finalTitle)\n"
+            "                            .setContentText(finalBody)\n"
+            "                            .setStyle(new NotificationCompat.BigTextStyle().bigText(finalBody))\n"
             "                            .setAutoCancel(true)\n"
             "                            .setPriority(NotificationCompat.PRIORITY_HIGH)\n"
             "                            .setDefaults(NotificationCompat.DEFAULT_ALL)\n"
@@ -1052,7 +1122,17 @@ import android.webkit.HttpAuthHandler;"""
             '        public String getPermission() { return "granted"; }\n'
             "\n"
             "        @JavascriptInterface\n"
-            "        public void requestPermission() { /* handled natively at app launch */ }\n"
+            "        public void requestPermission() {\n"
+            "            runOnUiThread(() -> {\n"
+            "                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {\n"
+            "                    if (!isPermissionGranted(Manifest.permission.POST_NOTIFICATIONS)) {\n"
+            "                        ActivityCompat.requestPermissions(MainActivity.this,\n"
+            "                            new String[]{Manifest.permission.POST_NOTIFICATIONS},\n"
+            "                            NOTIFICATION_PERMISSION_CODE);\n"
+            "                    }\n"
+            "                }\n"
+            "            });\n"
+            "        }\n"
             "    }\n"
         )
 
@@ -1358,6 +1438,11 @@ public class MainActivity extends AppCompatActivity {{
     // ═══════════════════════════════
     private void setupWebViewClient() {{
         webView.setWebViewClient(new WebViewClient() {{
+            @Override
+            public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {{
+                super.onPageStarted(view, url, favicon);
+{notif_page_finished_extra}            }}
+
             @Override
             public void onPageFinished(WebView view, String url) {{
                 super.onPageFinished(view, url);
