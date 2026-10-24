@@ -270,6 +270,8 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.4'
 
       - name: Generate release keystore
         run: |
@@ -288,8 +290,11 @@ jobs:
 
       - name: Compile APK or AAB
         run: |
-          gradle wrapper --gradle-version 8.4
+          # gradle/actions/setup-gradle@v3 with gradle-version: '8.4' already
+          # downloads Gradle 8.4 and sets GRADLE_HOME + creates the wrapper.
+          # We just need to make gradlew executable and build.
           chmod +x gradlew
+          echo "Gradle version: $(./gradlew --version 2>&1 | head -3)"
           if [ -f ".build_aab" ]; then
             echo "Building AAB (release)..."
             ./gradlew bundleRelease \
