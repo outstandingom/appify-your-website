@@ -290,7 +290,7 @@ def module_c_manifest():
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
-        android:label="{APP_NAME}"
+        android:label="@string/app_name"
         android:usesCleartextTraffic="true"
         android:theme="@style/AppTheme"
         android:networkSecurityConfig="@xml/network_security_config">
@@ -342,6 +342,21 @@ def module_c_manifest():
     <external-files-path name="external_files" path="." />
     <external-path name="external" path="." />
 </paths>
+""")
+
+    # Escape XML special characters in app name for strings.xml
+    app_name_xml = (APP_NAME
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', '\\"')
+        .replace("'", "\\'")
+    )
+
+    write_file("app/src/main/res/values/strings.xml", f"""<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">{app_name_xml}</string>
+</resources>
 """)
 
     write_file("app/src/main/res/values/colors.xml", f"""<?xml version="1.0" encoding="utf-8"?>
