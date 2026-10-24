@@ -288,35 +288,8 @@ jobs:
 
       - name: Compile APK or AAB
         run: |
-          # --- Generate Gradle wrapper pointing at Gradle 8.4 ---
-          # Use the system Gradle (any version) to generate wrapper files
-          GRADLE_BIN=$(which gradle 2>/dev/null || ls /usr/share/gradle*/bin/gradle 2>/dev/null | head -1 || true)
-          if [ -n "$GRADLE_BIN" ]; then
-            echo "Using system gradle: $GRADLE_BIN"
-            "$GRADLE_BIN" wrapper --gradle-version 8.4
-          else
-            # Fallback: write wrapper manually
-            echo "No system gradle found — writing Gradle 8.4 wrapper manually"
-            mkdir -p gradle/wrapper
-            cat > gradle/wrapper/gradle-wrapper.properties << 'PROPS'
-distributionBase=GRADLE_USER_HOME
-distributionPath=wrapper/dists
-distributionUrl=https\://services.gradle.org/distributions/gradle-8.4-bin.zip
-zipStoreBase=GRADLE_USER_HOME
-zipStorePath=wrapper/dists
-PROPS
-            # Download the official gradlew script
-            curl -fsSL https://raw.githubusercontent.com/gradle/gradle/v8.4.0/gradlew -o gradlew || \
-              curl -fsSL https://raw.githubusercontent.com/gradle/gradle/master/gradlew -o gradlew || \
-              { echo "Could not download gradlew"; exit 1; }
-          fi
+          gradle wrapper --gradle-version 8.4
           chmod +x gradlew
-
-          # --- Dump project structure for debugging ---
-          echo "=== Project structure ==="
-          find . -maxdepth 4 -name "*.xml" -o -name "*.gradle" -o -name "*.png" | sort | head -60
-
-          # --- Build ---
           if [ -f ".build_aab" ]; then
             echo "Building AAB (release)..."
             ./gradlew bundleRelease \
@@ -324,7 +297,7 @@ PROPS
               -Pandroid.injected.signing.store.password=android123 \
               -Pandroid.injected.signing.key.alias=releasekey \
               -Pandroid.injected.signing.key.password=android123 \
-              --no-daemon --stacktrace 2>&1
+              --no-daemon --stacktrace
           else
             echo "Building APK (release - sideloadable)..."
             ./gradlew assembleRelease \
@@ -332,7 +305,7 @@ PROPS
               -Pandroid.injected.signing.store.password=android123 \
               -Pandroid.injected.signing.key.alias=releasekey \
               -Pandroid.injected.signing.key.password=android123 \
-              --no-daemon --stacktrace 2>&1
+              --no-daemon --stacktrace
           fi
 
       - name: Stage built artifact
