@@ -910,8 +910,10 @@ import android.webkit.HttpAuthHandler;"""
     notif_page_finished_extra = ""
     notif_methods          = ""
     notif_permission_body  = ""
+    notif_field            = ""
 
     if ENABLE_PUSH:
+        notif_field = "    private NotificationBridge notificationBridge;\n"
 
         notif_imports = (
             "import android.app.NotificationChannel;\n"
@@ -1255,7 +1257,7 @@ public class MainActivity extends AppCompatActivity {{
     private String geoOrigin;
     private PermissionRequest pendingWebPermissionRequest;
     private Uri cameraImageUri;
-    private NotificationBridge notificationBridge;
+{notif_field}
 
     private static final int FILE_CHOOSER_REQUEST        = 1001;
     private static final int CAMERA_PERMISSION_FOR_UPLOAD = 2001;
