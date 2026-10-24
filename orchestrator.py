@@ -292,6 +292,8 @@ def module_c_manifest():
         android:roundIcon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:usesCleartextTraffic="true"
+        android:hardwareAccelerated="true"
+        android:largeHeap="true"
         android:theme="@style/AppTheme"
         android:networkSecurityConfig="@xml/network_security_config">
 {admob_meta}{fcm_default_channel_meta}
@@ -309,6 +311,7 @@ def module_c_manifest():
         <activity
             android:name=".MainActivity"
             android:exported="false"
+            android:hardwareAccelerated="true"
             android:configChanges="orientation|screenSize|keyboard|keyboardHidden" />
 
         <provider
@@ -651,7 +654,7 @@ public class SplashActivity extends AppCompatActivity {{
             startActivity(new Intent(SplashActivity.this, MainActivity.class));
             overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
             finish();
-        }}, 2000);
+        }}, 350);
     }}
 }}
 """)
@@ -924,7 +927,7 @@ import android.webkit.HttpAuthHandler;"""
         notif_bridge_setup = (
             "\n        // ── Push Notification Bridge ──\n"
             "        // Register JS interface so website can call AndroidBridge.showNotification()\n"
-            "        webView.addJavascriptInterface(new NotificationBridge(), \"AndroidBridge\");\n"
+            "        notificationBridge = new NotificationBridge();\n        webView.addJavascriptInterface(notificationBridge, \"AndroidBridge\");\n"
             "        setupNotificationChannel();\n"
             "        // Android 13+ requires explicit runtime permission for notifications\n"
             "        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {\n"
@@ -951,11 +954,23 @@ import android.webkit.HttpAuthHandler;"""
         # Injected into WebView on every page load
         notif_page_finished_extra = "                injectNotificationPolyfill();\n"
 
-        # Handles runtime permission result
+        # Handles runtime permission result — flushes queued notification and resolves JS promise
         notif_permission_body = (
             "\n"
             "                if (areAllPermissionsGranted(grantResults)) {\n"
             "                    injectNotificationPolyfill();\n"
+            "                    if (notificationBridge != null && notificationBridge.pendingTitle != null) {\n"
+            "                        notificationBridge.dispatchNotification(\n"
+            "                            notificationBridge.pendingTitle,\n"
+            "                            notificationBridge.pendingBody,\n"
+            "                            notificationBridge.pendingIcon);\n"
+            "                        notificationBridge.pendingTitle = null;\n"
+            "                        notificationBridge.pendingBody  = null;\n"
+            "                        notificationBridge.pendingIcon  = null;\n"
+            "                    }\n"
+            '                    webView.evaluateJavascript("window.__onPermissionResolved && window.__onPermissionResolved(\'granted\');", null);\n'
+            "                } else {\n"
+            '                    webView.evaluateJavascript("window.__onPermissionResolved && window.__onPermissionResolved(\'denied\');", null);\n'
             "                }"
         )
 
@@ -973,7 +988,16 @@ import android.webkit.HttpAuthHandler;"""
             f'                "web_push_channel", "{app_safe} Notifications",\n'
             "                NotificationManager.IMPORTANCE_HIGH);\n"
             f'            ch.setDescription("Push notifications from {app_safe}");\n'
+            "            ch.enableLights(true);\n"
+            "            ch.setLightColor(android.graphics.Color.GREEN);\n"
             "            ch.enableVibration(true);\n"
+            "            ch.setVibrationPattern(new long[]{0, 250, 250, 250});\n"
+            "            ch.setLockscreenVisibility(android.app.Notification.VISIBILITY_PUBLIC);\n"
+            "            android.media.AudioAttributes aa = new android.media.AudioAttributes.Builder()\n"
+            "                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)\n"
+            "                .setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION)\n"
+            "                .build();\n"
+            "            ch.setSound(android.provider.Settings.System.DEFAULT_NOTIFICATION_URI, aa);\n"
             "            NotificationManager mgr = getSystemService(NotificationManager.class);\n"
             "            if (mgr != null) mgr.createNotificationChannel(ch);\n"
             "        }\n"
@@ -1006,14 +1030,28 @@ import android.webkit.HttpAuthHandler;"""
             '            "      if (typeof self.onshow === \'function\') { try { self.onshow(); } catch(e) {} }" +\n'
             '            "    }, 10);" +\n'
             '            "  }" +\n'
-            '            "  WebNotification.permission = \'granted\';" +\n'
             '            "  WebNotification.maxActions = 2;" +\n'
+            '            "  try {" +\n'
+            '            "    Object.defineProperty(WebNotification, \'permission\', {" +\n'
+            '            "      get: function() { return (window.AndroidBridge && window.AndroidBridge.getPermission) ? window.AndroidBridge.getPermission() : \'granted\'; }," +\n'
+            '            "      configurable: true" +\n'
+            '            "    });" +\n'
+            '            "  } catch(ep) { WebNotification.permission = \'granted\'; }" +\n'
             '            "  WebNotification.requestPermission = function(cb) {" +\n'
-            '            "    if (window.AndroidBridge && window.AndroidBridge.requestPermission) {" +\n'
-            '            "      window.AndroidBridge.requestPermission();" +\n'
-            '            "    }" +\n'
-            '            "    if (typeof cb === \'function\') { try { cb(\'granted\'); } catch(e) {} }" +\n'
-            '            "    return Promise.resolve(\'granted\');" +\n'
+            '            "    return new Promise(function(resolve) {" +\n'
+            '            "      var settled = false;" +\n'
+            '            "      function finish(res) {" +\n'
+            '            "        if (settled) return;" +\n'
+            '            "        settled = true;" +\n'
+            '            "        if (typeof cb === \'function\') { try { cb(res); } catch(e) {} }" +\n'
+            '            "        resolve(res);" +\n'
+            '            "      }" +\n'
+            '            "      window.__onPermissionResolved = finish;" +\n'
+            '            "      if (window.AndroidBridge && window.AndroidBridge.requestPermission) {" +\n'
+            '            "        window.AndroidBridge.requestPermission();" +\n'
+            '            "      } else { finish(\'granted\'); }" +\n'
+            '            "      setTimeout(function() { finish(WebNotification.permission || \'granted\'); }, 6000);" +\n'
+            '            "    });" +\n'
             '            "  };" +\n'
             '            "  WebNotification.prototype.close = function() {" +\n'
             '            "    if (typeof this.onclose === \'function\') { try { this.onclose(); } catch(e) {} }" +\n'
@@ -1084,42 +1122,68 @@ import android.webkit.HttpAuthHandler;"""
             "    private int notifId = 1000;\n"
             "\n"
             "    public class NotificationBridge {\n"
+            "        public String pendingTitle = null;\n"
+            "        public String pendingBody  = null;\n"
+            "        public String pendingIcon  = null;\n"
             "\n"
             "        @JavascriptInterface\n"
             "        public void showNotification(final String title, final String body, String icon) {\n"
             "            runOnUiThread(() -> {\n"
-            "                try {\n"
-            "                    android.content.Intent i = new android.content.Intent(\n"
-            "                        MainActivity.this, MainActivity.class);\n"
-            "                    i.setFlags(android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP);\n"
-            "                    PendingIntent pi = PendingIntent.getActivity(\n"
-            "                        MainActivity.this, notifId, i,\n"
-            "                        PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);\n"
-            "                    int iconRes = getApplicationInfo().icon;\n"
-            "                    if (iconRes == 0) iconRes = android.R.drawable.ic_dialog_info;\n"
-            "                    String finalTitle = (title != null && !title.isEmpty()) ? title : \"" + app_safe + "\";\n"
-            "                    String finalBody = (body != null) ? body : \"\";\n"
-            "                    NotificationCompat.Builder nb =\n"
-            '                        new NotificationCompat.Builder(MainActivity.this, "web_push_channel")\n'
-            "                            .setSmallIcon(iconRes)\n"
-            "                            .setContentTitle(finalTitle)\n"
-            "                            .setContentText(finalBody)\n"
-            "                            .setStyle(new NotificationCompat.BigTextStyle().bigText(finalBody))\n"
-            "                            .setAutoCancel(true)\n"
-            "                            .setPriority(NotificationCompat.PRIORITY_HIGH)\n"
-            "                            .setDefaults(NotificationCompat.DEFAULT_ALL)\n"
-            "                            .setContentIntent(pi);\n"
-            "                    NotificationManager nm = (NotificationManager)\n"
-            "                        MainActivity.this.getSystemService(NOTIFICATION_SERVICE);\n"
-            "                    if (nm != null) nm.notify(notifId++, nb.build());\n"
-            "                } catch (Exception e) {\n"
-            '                    android.util.Log.e("WebPush", "Notification error", e);\n'
+            "                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {\n"
+            "                    if (!isPermissionGranted(Manifest.permission.POST_NOTIFICATIONS)) {\n"
+            "                        pendingTitle = title;\n"
+            "                        pendingBody  = body;\n"
+            "                        pendingIcon  = icon;\n"
+            "                        ActivityCompat.requestPermissions(MainActivity.this,\n"
+            "                            new String[]{Manifest.permission.POST_NOTIFICATIONS},\n"
+            "                            NOTIFICATION_PERMISSION_CODE);\n"
+            "                        return;\n"
+            "                    }\n"
             "                }\n"
+            "                dispatchNotification(title, body, icon);\n"
             "            });\n"
             "        }\n"
             "\n"
+            "        public void dispatchNotification(final String title, final String body, final String icon) {\n"
+            "            try {\n"
+            "                android.content.Intent i = new android.content.Intent(\n"
+            "                    MainActivity.this, MainActivity.class);\n"
+            "                i.setFlags(android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP | android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP);\n"
+            "                PendingIntent pi = PendingIntent.getActivity(\n"
+            "                    MainActivity.this, notifId, i,\n"
+            "                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);\n"
+            "                int iconRes = getApplicationInfo().icon;\n"
+            "                if (iconRes == 0) iconRes = android.R.drawable.ic_dialog_info;\n"
+            "                String finalTitle = (title != null && !title.isEmpty()) ? title : \"" + app_safe + "\";\n"
+            "                String finalBody  = (body != null) ? body : \"\";\n"
+            "                NotificationCompat.Builder nb =\n"
+            '                    new NotificationCompat.Builder(MainActivity.this, "web_push_channel")\n'
+            "                        .setSmallIcon(iconRes)\n"
+            "                        .setContentTitle(finalTitle)\n"
+            "                        .setContentText(finalBody)\n"
+            "                        .setStyle(new NotificationCompat.BigTextStyle().bigText(finalBody))\n"
+            "                        .setAutoCancel(true)\n"
+            "                        .setPriority(NotificationCompat.PRIORITY_MAX)\n"
+            "                        .setDefaults(NotificationCompat.DEFAULT_ALL)\n"
+            "                        .setSound(android.provider.Settings.System.DEFAULT_NOTIFICATION_URI)\n"
+            "                        .setVibrate(new long[]{0, 250, 250, 250})\n"
+            "                        .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)\n"
+            "                        .setContentIntent(pi);\n"
+            "                NotificationManager nm = (NotificationManager)\n"
+            "                    MainActivity.this.getSystemService(NOTIFICATION_SERVICE);\n"
+            "                if (nm != null) nm.notify(notifId++, nb.build());\n"
+            "            } catch (Exception e) {\n"
+            '                android.util.Log.e("WebPush", "Notification error", e);\n'
+            "            }\n"
+            "        }\n"
+            "\n"
             "        @JavascriptInterface\n"
-            '        public String getPermission() { return "granted"; }\n'
+            "        public String getPermission() {\n"
+            "            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {\n"
+            '                return isPermissionGranted(Manifest.permission.POST_NOTIFICATIONS) ? "granted" : "default";\n'
+            "            }\n"
+            '            return "granted";\n'
+            "        }\n"
             "\n"
             "        @JavascriptInterface\n"
             "        public void requestPermission() {\n"
@@ -1129,7 +1193,11 @@ import android.webkit.HttpAuthHandler;"""
             "                        ActivityCompat.requestPermissions(MainActivity.this,\n"
             "                            new String[]{Manifest.permission.POST_NOTIFICATIONS},\n"
             "                            NOTIFICATION_PERMISSION_CODE);\n"
+            "                    } else {\n"
+            '                        webView.evaluateJavascript("window.__onPermissionResolved && window.__onPermissionResolved(\'granted\');", null);\n'
             "                    }\n"
+            "                } else {\n"
+            '                    webView.evaluateJavascript("window.__onPermissionResolved && window.__onPermissionResolved(\'granted\');", null);\n'
             "                }\n"
             "            });\n"
             "        }\n"
@@ -1187,6 +1255,7 @@ public class MainActivity extends AppCompatActivity {{
     private String geoOrigin;
     private PermissionRequest pendingWebPermissionRequest;
     private Uri cameraImageUri;
+    private NotificationBridge notificationBridge;
 
     private static final int FILE_CHOOSER_REQUEST        = 1001;
     private static final int CAMERA_PERMISSION_FOR_UPLOAD = 2001;
@@ -1285,7 +1354,22 @@ public class MainActivity extends AppCompatActivity {{
         s.setSupportMultipleWindows(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         s.setGeolocationEnabled(true);
-        s.setUserAgentString(s.getUserAgentString() + " {APP_NAME}App/1.0");
+
+        // Hardware GPU layer & rendering optimizations for smooth high-FPS scrolling
+        webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        webView.setScrollBarStyle(View.SCROLLBARS_INSIDE_OVERLAY);
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {{
+            s.setOffscreenPreRaster(true);
+        }}
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {{
+            s.setSafeBrowsingEnabled(false);
+        }}
+
+        // Standard high-speed mobile browser User-Agent
+        // Removing '; wv' and 'Version/4.0' prevents Cloudflare/CDN bot challenges so page streams instantly
+        String defaultUa = s.getUserAgentString();
+        String cleanedUa = defaultUa.replace("; wv", "").replace("Version/4.0 ", "");
+        s.setUserAgentString(cleanedUa);
     }}
 
     // ═══════════════════════════════
